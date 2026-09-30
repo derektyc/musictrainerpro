@@ -160,7 +160,7 @@
   <header class="topbar">
     <div class="brand-wrap">
       <div class="brand">DT Music Trainer</div>
-      <div class="sub">Interactive Score Prototype v1.1 · alphaTab 1.8.4</div>
+      <div class="sub">Interactive Score Prototype v1.2 · alphaTab 1.8.4</div>
     </div>
     <div id="statusPill" class="status-pill">Choose a Guitar Pro or MusicXML file</div>
   </header>
@@ -175,7 +175,7 @@
             accept=".gp,.gpx,.gp3,.gp4,.gp5,.gp6,.gp7,.gp8,.musicxml,.mxl,.xml,application/xml,text/xml" />
         </button>
         <button id="sampleBtn" class="btn ghost" type="button">Open alphaTab Test Song</button>
-        <div class="note">This prototype reads the score locally in your browser. Your uploaded file is not sent to DT Music Trainer.</div>
+        <div class="note">This prototype reads the score locally in your browser. MuseScore users: export .mscz as MusicXML (.musicxml or .mxl) first. Your uploaded file is not sent to DT Music Trainer.</div>
       </div>
 
       <div class="section">
@@ -457,14 +457,20 @@
     el.loading.style.display = "flex";
 
     try {
-      const data = await file.arrayBuffer();
+      const buffer = await file.arrayBuffer();
+      const data = new Uint8Array(buffer);
       const accepted = api.load(data);
-      if (!accepted) throw new Error("alphaTab did not recognise this file format.");
+      if (!accepted) {
+        throw new Error(
+          "The browser could not pass this file to alphaTab. " +
+          "If this is a MuseScore .mscz file, export it as MusicXML (.musicxml or .mxl) first."
+        );
+      }
     } catch (err) {
       console.error(err);
       el.loading.style.display = "none";
       setStatus("Could not open score");
-      alert("Could not open this interactive score.\\n\\n" + (err && err.message ? err.message : err));
+      alert("Could not open this interactive score.\n\n" + (err && err.message ? err.message : err));
     }
   }
 
