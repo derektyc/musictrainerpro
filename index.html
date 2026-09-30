@@ -81,7 +81,7 @@
     }
     .track-btn.active{border-color:var(--accent);background:#3a3127;color:var(--accent2)}
     .main{min-width:0;min-height:0;overflow:hidden;display:flex;flex-direction:column;background:#efefef}
-    .score-viewport{position:relative;flex:1;min-height:0;overflow:auto;background:#fff;overscroll-behavior:contain;scroll-behavior:smooth}
+    .score-viewport{position:relative;flex:1;min-height:0;overflow:auto;background:#fff;overscroll-behavior:contain}
     #alphaTab{min-height:100%;padding:10px 4px 90px}
     .empty{
       min-height:65vh;display:flex;align-items:center;justify-content:center;padding:24px;
@@ -177,7 +177,7 @@
   <header class="topbar">
     <div class="brand-wrap">
       <div class="brand">DT Music Trainer</div>
-      <div class="sub">Interactive Score Prototype v1.3 · alphaTab 1.8.4</div>
+      <div class="sub">Interactive Score Prototype v1.4 · alphaTab 1.8.4</div>
     </div>
     <div id="statusPill" class="status-pill">Choose a Guitar Pro or MusicXML file</div>
   </header>
@@ -353,10 +353,9 @@
       enableElementHighlighting: true,
       soundFont: ALPHATAB_BASE + "soundfont/sonivox.sf2",
       scrollElement: el.viewport,
-      scrollMode: "smooth",
-      nativeBrowserSmoothScroll: false,
-      scrollSpeed: 300,
-      scrollOffsetY: -40
+      scrollMode: "offscreen",
+      nativeBrowserSmoothScroll: true,
+      scrollOffsetY: -24
     }
   });
 
