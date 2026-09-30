@@ -61,6 +61,16 @@
     applyLoop: $("applyLoop"),
     clearLoop: $("clearLoop"),
     loopStatus: $("loopStatus"),
+    synthMode: $("synthModeBtn"),
+    backingMode: $("backingModeBtn"),
+    autoSync: $("autoSyncBtn"),
+    syncBar: $("syncBarInput"),
+    syncCurrentTime: $("syncCurrentTime"),
+    markSync: $("markSyncBtn"),
+    clearSync: $("clearSyncBtn"),
+    syncPointList: $("syncPointList"),
+    syncStatus: $("syncStatus"),
+    audioModeNote: $("audioModeNote"),
     audio: $("backingAudio"),
     audioTitle: $("audioTitle"),
     audioStop: $("audioStopBtn"),
@@ -75,6 +85,12 @@
   let playerReady = false;
   let scorePlaying = false;
   let backingUrl = "";
+  let loadedAudioSongId = "";
+  let backingModeActive = false;
+  let backingSyncTimer = null;
+  let backingLoopEnabled = false;
+  let backingLoopStartMs = 0;
+  let backingLoopEndMs = 0;
   let toastTimer = null;
 
   function setStatus(text, tone) {
@@ -332,6 +348,7 @@
       setAssetRow(el.audioAsset, "audio", null, "🎧");
       el.viewerTitle.textContent = "No song selected";
       el.viewerMeta.textContent = "Choose a song from the library.";
+      renderSyncPanel(null);
       return;
     }
 
@@ -347,6 +364,7 @@
       song.pdf ? "PDF ✓" : "",
       song.audio ? "Audio ✓" : ""
     ].filter(Boolean).join(" · ") || "No files attached yet";
+    renderSyncPanel(song);
   }
 
   function showEmpty(title, text) {
@@ -366,9 +384,13 @@
     if (selectedSongId === id) return;
     selectedSongId = id;
     localStorage.setItem("dtmtp-selected-song", id);
+    backingModeActive = false;
+    backingLoopEnabled = false;
+    clearAppliedSyncPoints();
     renderLibrary();
     renderSelectedSong();
     stopBackingAudio();
+    updateSourceUI();
     if (activeInteractiveSongId && activeInteractiveSongId !== id) {
       try { api.stop(); } catch (e) {}
       showEmpty("Ready for " + (selectedSong() ? selectedSong().title : "song"), "Press Open Interactive to load this song's Guitar Pro or MusicXML score.");
@@ -406,13 +428,15 @@
             updatedAt: Date.now(),
             interactive: null,
             pdf: null,
-            audio: null
+            audio: null,
+            syncPoints: []
           };
           cache.push(song);
         }
       }
 
       song[kind] = makeAsset(file);
+      if (kind === "interactive" || kind === "audio") song.syncPoints = [];
       await putSong(song);
       changed.add(song.id);
       added++;
@@ -440,7 +464,8 @@
       updatedAt: Date.now(),
       interactive: null,
       pdf: null,
-      audio: null
+      audio: null,
+      syncPoints: []
     };
     await putSong(song);
     selectedSongId = song.id;
@@ -496,11 +521,46 @@
   }
 
   function stopBackingAudio() {
+    stopBackingSyncTimer();
     el.audio.pause();
     el.audio.removeAttribute("src");
     el.audio.load();
     revokeBackingUrl();
+    loadedAudioSongId = "";
     el.audioTitle.textContent = "No backing track loaded";
+    updateSyncCurrentTime();
+  }
+
+  function waitForAudioMetadata() {
+    if (Number.isFinite(el.audio.duration) && el.audio.duration > 0) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const done = () => { cleanup(); resolve(); };
+      const fail = () => { cleanup(); reject(new Error("Could not read the backing-track duration.")); };
+      const cleanup = () => {
+        el.audio.removeEventListener("loadedmetadata", done);
+        el.audio.removeEventListener("error", fail);
+      };
+      el.audio.addEventListener("loadedmetadata", done, { once: true });
+      el.audio.addEventListener("error", fail, { once: true });
+    });
+  }
+
+  async function ensureBackingAudio(song) {
+    if (!song || !song.audio || !song.audio.blob) throw new Error("This song has no backing track.");
+    if (loadedAudioSongId === song.id && el.audio.src) {
+      await waitForAudioMetadata();
+      return;
+    }
+    stopBackingSyncTimer();
+    el.audio.pause();
+    revokeBackingUrl();
+    backingUrl = URL.createObjectURL(song.audio.blob);
+    loadedAudioSongId = song.id;
+    el.audio.src = backingUrl;
+    el.audioTitle.textContent = song.audio.name;
+    el.audio.load();
+    await waitForAudioMetadata();
+    updateSyncCurrentTime();
   }
 
   async function playSelectedAudio() {
@@ -509,16 +569,310 @@
     if (scorePlaying) {
       try { api.playPause(); } catch (e) {}
     }
-    stopBackingAudio();
-    backingUrl = URL.createObjectURL(song.audio.blob);
-    el.audio.src = backingUrl;
-    el.audioTitle.textContent = song.audio.name;
     try {
+      await ensureBackingAudio(song);
       await el.audio.play();
-      setStatus("Playing backing track · " + song.title, "ok");
+      setStatus((backingModeActive ? "Playing synced backing · " : "Playing backing track · ") + song.title, "ok");
     } catch (e) {
       setStatus("Backing track loaded. Press play in the audio controls.", "warn");
     }
+  }
+
+  function formatSyncTime(ms) {
+    ms = Math.max(0, Number(ms) || 0);
+    const totalSeconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    const milli = Math.floor(ms % 1000);
+    return String(minutes).padStart(2, "0") + ":" + String(seconds).padStart(2, "0") + "." + String(milli).padStart(3, "0");
+  }
+
+  function updateSyncCurrentTime() {
+    if (!el.syncCurrentTime) return;
+    el.syncCurrentTime.textContent = formatSyncTime((Number(el.audio.currentTime) || 0) * 1000);
+  }
+
+  function normalizeSyncPoints(points) {
+    return (Array.isArray(points) ? points : [])
+      .map((p) => ({
+        barIndex: Math.max(0, Number(p.barIndex) || 0),
+        barOccurence: Math.max(0, Number(p.barOccurence) || 0),
+        barPosition: Math.max(0, Math.min(1, Number(p.barPosition) || 0)),
+        millisecondOffset: Math.max(0, Number(p.millisecondOffset) || 0)
+      }))
+      .sort((a, b) => (a.barIndex + a.barPosition) - (b.barIndex + b.barPosition) || a.millisecondOffset - b.millisecondOffset);
+  }
+
+  function applySongSyncPoints(song) {
+    if (!api || !api.score || !song) return false;
+    const points = normalizeSyncPoints(song.syncPoints);
+    try {
+      api.score.applyFlatSyncPoints(points);
+      api.updateSyncPoints();
+      return points.length >= 2;
+    } catch (error) {
+      console.error("Could not apply sync points", error);
+      setStatus("Could not apply backing-track sync points.", "warn");
+      return false;
+    }
+  }
+
+  function clearAppliedSyncPoints() {
+    if (!api || !api.score) return;
+    try {
+      api.score.applyFlatSyncPoints([]);
+      api.updateSyncPoints();
+    } catch (error) {
+      console.warn("Could not clear applied sync points", error);
+    }
+  }
+
+  function renderSyncPanel(song) {
+    if (!el.syncPointList) return;
+    const scoreReady = !!(song && activeInteractiveSongId === song.id && api && api.score && playerReady);
+    const hasPair = !!(song && song.interactive && song.audio);
+    const points = normalizeSyncPoints(song && song.syncPoints);
+
+    el.backingMode.disabled = !hasPair || !scoreReady;
+    el.autoSync.disabled = !hasPair || !scoreReady;
+    el.markSync.disabled = !hasPair || !scoreReady;
+    el.clearSync.disabled = !song || !points.length;
+    if (api && api.score && api.score.masterBars) el.syncBar.max = String(Math.max(1, api.score.masterBars.length));
+
+    el.synthMode.classList.toggle("active-source", !backingModeActive);
+    el.backingMode.classList.toggle("active-source", backingModeActive);
+
+    el.syncPointList.innerHTML = "";
+    if (!song) {
+      el.syncPointList.innerHTML = '<div class="note">Select a song first.</div>';
+      el.syncStatus.textContent = "Sync points are saved with the song and included in Library ZIP backups.";
+      return;
+    }
+    if (!hasPair) {
+      el.syncPointList.innerHTML = '<div class="note">Attach both an interactive score and an MP3/WAV backing track.</div>';
+      el.syncStatus.textContent = "Both files are required for Phase 3 sync.";
+      return;
+    }
+    if (!scoreReady) {
+      el.syncPointList.innerHTML = '<div class="note">Press Open Interactive first, then create or edit sync points.</div>';
+      el.syncStatus.textContent = points.length ? points.length + " saved sync point(s)." : "Interactive score must be loaded before calibration.";
+      return;
+    }
+
+    if (!points.length) {
+      el.syncPointList.innerHTML = '<div class="note">No sync points yet. Auto Sync creates start/end points; add extra bar markers if the audio drifts.</div>';
+    } else {
+      points.forEach((point, index) => {
+        const row = document.createElement("div");
+        row.className = "sync-point";
+        const main = document.createElement("div");
+        main.className = "sync-point-main";
+        const title = document.createElement("div");
+        title.className = "sync-point-title";
+        const isEnd = point.barPosition >= 0.999;
+        title.textContent = "Bar " + (point.barIndex + 1) + (isEnd ? " end" : " start");
+        const meta = document.createElement("div");
+        meta.className = "sync-point-meta";
+        meta.textContent = formatSyncTime(point.millisecondOffset);
+        main.append(title, meta);
+        const del = document.createElement("button");
+        del.type = "button";
+        del.textContent = "Remove";
+        del.onclick = async () => {
+          const current = await getSong(song.id);
+          if (!current) return;
+          const list = normalizeSyncPoints(current.syncPoints);
+          list.splice(index, 1);
+          current.syncPoints = list;
+          await putSong(current);
+          if (backingModeActive) applySongSyncPoints(current);
+          await refreshCache();
+        };
+        row.append(main, del);
+        el.syncPointList.appendChild(row);
+      });
+    }
+
+    el.syncStatus.textContent = points.length >= 2
+      ? points.length + " sync point(s) ready. Extra points improve songs with intros or tempo drift."
+      : "At least 2 sync points are recommended.";
+  }
+
+  async function autoSyncWholeSong() {
+    const song = await getSong(selectedSongId);
+    if (!song || !song.interactive || !song.audio || activeInteractiveSongId !== song.id || !api.score) return;
+    try {
+      await ensureBackingAudio(song);
+      const bars = api.score.masterBars || [];
+      if (!bars.length) throw new Error("The score has no bars.");
+      const durationMs = el.audio.duration * 1000;
+      if (!Number.isFinite(durationMs) || durationMs <= 0) throw new Error("Backing-track duration is unavailable.");
+      song.syncPoints = [
+        { barIndex: 0, barOccurence: 0, barPosition: 0, millisecondOffset: 0 },
+        { barIndex: bars.length - 1, barOccurence: 0, barPosition: 1, millisecondOffset: durationMs }
+      ];
+      await putSong(song);
+      if (backingModeActive) applySongSyncPoints(song);
+      await refreshCache();
+      setStatus("Auto sync created start/end points for " + song.title + ".", "ok");
+      toast("Auto sync ready. If the song drifts, add bar markers while listening.");
+    } catch (error) {
+      setStatus("Could not auto sync: " + error.message, "warn");
+    }
+  }
+
+  async function markCurrentAudioAtBar() {
+    const song = await getSong(selectedSongId);
+    if (!song || !api.score || activeInteractiveSongId !== song.id) return;
+    try {
+      await ensureBackingAudio(song);
+      const totalBars = api.score.masterBars.length;
+      const barNumber = Math.max(1, Math.min(totalBars, parseInt(el.syncBar.value || "1", 10)));
+      const point = {
+        barIndex: barNumber - 1,
+        barOccurence: 0,
+        barPosition: 0,
+        millisecondOffset: Math.round((Number(el.audio.currentTime) || 0) * 1000)
+      };
+      const points = normalizeSyncPoints(song.syncPoints).filter((p) => !(p.barIndex === point.barIndex && p.barPosition < 0.001));
+      points.push(point);
+      song.syncPoints = normalizeSyncPoints(points);
+      await putSong(song);
+      if (backingModeActive) applySongSyncPoints(song);
+      await refreshCache();
+      setStatus("Synced bar " + barNumber + " to " + formatSyncTime(point.millisecondOffset) + ".", "ok");
+    } catch (error) {
+      setStatus("Could not add sync point: " + error.message, "warn");
+    }
+  }
+
+  async function clearSongSyncPoints() {
+    const song = await getSong(selectedSongId);
+    if (!song) return;
+    if (!confirm("Clear all backing-track sync points for " + song.title + "?")) return;
+    song.syncPoints = [];
+    await putSong(song);
+    if (backingModeActive) {
+      backingModeActive = false;
+      clearAppliedSyncPoints();
+      stopBackingSyncTimer();
+      el.audio.pause();
+    }
+    backingLoopEnabled = false;
+    await refreshCache();
+    updateSourceUI();
+    setStatus("Sync points cleared.", "ok");
+  }
+
+  function updateSourceUI() {
+    el.synthMode.classList.toggle("active-source", !backingModeActive);
+    el.backingMode.classList.toggle("active-source", backingModeActive);
+    if (backingModeActive) {
+      el.audioModeNote.textContent = "Synced Backing mode: the real MP3/WAV drives the notation cursor.";
+      el.countIn.disabled = true;
+      el.metro.disabled = true;
+      el.speed.disabled = !playerReady;
+    } else {
+      el.audioModeNote.textContent = "Synth mode. Switch to Synced Backing after creating sync points.";
+      el.countIn.disabled = !playerReady;
+      el.metro.disabled = !playerReady;
+      el.speed.disabled = !playerReady;
+    }
+    const song = selectedSong();
+    if (song) renderSyncPanel(song);
+  }
+
+  async function useBackingMode() {
+    let song = await getSong(selectedSongId);
+    if (!song || !song.interactive || !song.audio) return;
+    if (activeInteractiveSongId !== song.id || !api.score) {
+      await loadInteractiveAsset(song);
+      setStatus("Interactive score loading. Press Synced Backing again when ready.", "warn");
+      return;
+    }
+    try {
+      await ensureBackingAudio(song);
+      if (normalizeSyncPoints(song.syncPoints).length < 2) {
+        await autoSyncWholeSong();
+        song = await getSong(selectedSongId);
+      }
+      if (!song || normalizeSyncPoints(song.syncPoints).length < 2) throw new Error("At least two sync points are required.");
+      if (scorePlaying) {
+        try { api.playPause(); } catch (e) {}
+      }
+      backingModeActive = true;
+      applySongSyncPoints(song);
+      updateSourceUI();
+      syncCursorFromBacking();
+      setStatus("Synced Backing mode ready · " + song.title, "ok");
+    } catch (error) {
+      backingModeActive = false;
+      updateSourceUI();
+      setStatus("Could not enable synced backing: " + error.message, "warn");
+    }
+  }
+
+  function useSynthMode() {
+    backingModeActive = false;
+    stopBackingSyncTimer();
+    el.audio.pause();
+    backingLoopEnabled = false;
+    clearAppliedSyncPoints();
+    updateSourceUI();
+    setStatus("Synth mode ready.", "ok");
+  }
+
+  function stopBackingSyncTimer() {
+    if (backingSyncTimer) {
+      clearInterval(backingSyncTimer);
+      backingSyncTimer = null;
+    }
+  }
+
+  function scoreTimeAtBarStart(barIndex) {
+    if (!api || !api.score || !api.score.masterBars || !api.score.masterBars.length) return 0;
+    const index = Math.max(0, Math.min(api.score.masterBars.length - 1, barIndex));
+    try {
+      const tick = masterBarPlaybackStart(api.score.masterBars[index]);
+      const oldTick = api.tickPosition;
+      api.tickPosition = tick;
+      const time = Number(api.timePosition) || 0;
+      api.tickPosition = oldTick;
+      return time;
+    } catch (error) {
+      const duration = Number(el.audio.duration) || 0;
+      return duration * 1000 * (index / Math.max(1, api.score.masterBars.length));
+    }
+  }
+
+  function updateBackingLoopTimes(startBar, endBar) {
+    if (!backingModeActive || !api.score) return;
+    backingLoopStartMs = scoreTimeAtBarStart(startBar - 1);
+    backingLoopEndMs = endBar < api.score.masterBars.length
+      ? scoreTimeAtBarStart(endBar)
+      : (Number(el.audio.duration) || 0) * 1000;
+    if (backingLoopEndMs <= backingLoopStartMs) {
+      backingLoopStartMs = 0;
+      backingLoopEndMs = (Number(el.audio.duration) || 0) * 1000;
+    }
+  }
+
+  function syncCursorFromBacking() {
+    if (!backingModeActive || !api || !api.score || activeInteractiveSongId !== selectedSongId) return;
+    const audioMs = (Number(el.audio.currentTime) || 0) * 1000;
+    try { api.timePosition = audioMs; } catch (error) {}
+    el.position.textContent = fmt(audioMs) + " / " + fmt((Number(el.audio.duration) || 0) * 1000);
+    updateSyncCurrentTime();
+    if (backingLoopEnabled && backingLoopEndMs > backingLoopStartMs && audioMs >= backingLoopEndMs - 20) {
+      el.audio.currentTime = backingLoopStartMs / 1000;
+      try { api.timePosition = backingLoopStartMs; } catch (error) {}
+    }
+  }
+
+  function startBackingSyncTimer() {
+    stopBackingSyncTimer();
+    syncCursorFromBacking();
+    backingSyncTimer = setInterval(syncCursorFromBacking, 50);
   }
 
   function resetTransportState() {
@@ -647,9 +1001,11 @@
     }
 
     api.playbackRange = { startTick, endTick };
-    api.isLooping = true;
+    api.isLooping = !backingModeActive;
+    backingLoopEnabled = backingModeActive;
+    if (backingModeActive) updateBackingLoopTimes(startBar, endBar);
     el.loop.classList.add("active");
-    el.loopStatus.textContent = "Looping bars " + startBar + "–" + endBar + ".";
+    el.loopStatus.textContent = "Looping bars " + startBar + "–" + endBar + (backingModeActive ? " with backing track." : ".");
 
     try {
       const track = api.tracks && api.tracks.length ? api.tracks[0] : api.score.tracks[0];
@@ -664,6 +1020,9 @@
   function clearLoopRange() {
     api.playbackRange = null;
     api.isLooping = false;
+    backingLoopEnabled = false;
+    backingLoopStartMs = 0;
+    backingLoopEndMs = 0;
     el.loop.classList.remove("active");
     el.loopStatus.textContent = "No loop range set.";
     try { api.clearPlaybackRangeHighlight(); } catch (e) {}
@@ -672,7 +1031,10 @@
   async function loadInteractiveAsset(song) {
     if (!song || !song.interactive || !song.interactive.blob) return;
     resetTransportState();
-    stopBackingAudio();
+    stopBackingSyncTimer();
+    el.audio.pause();
+    backingModeActive = false;
+    backingLoopEnabled = false;
     activeInteractiveSongId = song.id;
     currentFilename = song.interactive.name;
     el.alpha.style.display = "block";
@@ -704,6 +1066,8 @@
 
   function loadSample() {
     resetTransportState();
+    backingModeActive = false;
+    backingLoopEnabled = false;
     stopBackingAudio();
     activeInteractiveSongId = "__sample__";
     currentFilename = "alphaTab test song";
@@ -735,6 +1099,10 @@
     renderTrackButtons(score);
     el.applyLoop.disabled = false;
     el.clearLoop.disabled = false;
+    el.syncBar.max = String(Math.max(1, barCount));
+    const loadedSong = activeInteractiveSongId === "__sample__" ? null : songsCache.find((s) => s.id === activeInteractiveSongId);
+    if (backingModeActive && loadedSong) applySongSyncPoints(loadedSong);
+    renderSyncPanel(loadedSong || selectedSong());
     setStatus("Score loaded · preparing playback…");
   });
 
@@ -758,17 +1126,19 @@
   api.playerReady.on(() => {
     playerReady = true;
     [el.stop, el.play, el.countIn, el.metro, el.loop, el.speed].forEach((node) => node.disabled = false);
+    updateSourceUI();
+    renderSyncPanel(selectedSong());
     setStatus("Interactive score ready.", "ok");
   });
 
   api.playerStateChanged.on((event) => {
     scorePlaying = event.state === alphaTab.synth.PlayerState.Playing;
-    el.play.textContent = scorePlaying ? "Ⅱ" : "▶";
+    if (!backingModeActive) el.play.textContent = scorePlaying ? "Ⅱ" : "▶";
     if (scorePlaying && !el.audio.paused) el.audio.pause();
   });
 
   api.playerPositionChanged.on((event) => {
-    el.position.textContent = fmt(event.currentTime) + " / " + fmt(event.endTime);
+    if (!backingModeActive) el.position.textContent = fmt(event.currentTime) + " / " + fmt(event.endTime);
   });
 
   api.error.on((event) => {
@@ -804,6 +1174,7 @@
           title: song.title,
           createdAt: song.createdAt || Date.now(),
           updatedAt: song.updatedAt || Date.now(),
+          syncPoints: normalizeSyncPoints(song.syncPoints),
           assets: {}
         };
 
@@ -880,7 +1251,8 @@
           updatedAt: meta.updatedAt || Date.now(),
           interactive: null,
           pdf: null,
-          audio: null
+          audio: null,
+          syncPoints: normalizeSyncPoints(meta.syncPoints)
         };
 
         for (const kind of ["interactive","pdf","audio"]) {
@@ -947,23 +1319,57 @@
   });
   el.dropzone.addEventListener("drop", (event) => addFilesToLibrary(event.dataTransfer.files, ""));
 
-  el.play.onclick = () => {
+  el.play.onclick = async () => {
     if (!playerReady) return;
+    if (backingModeActive) {
+      const song = await getSong(selectedSongId);
+      if (!song) return;
+      try {
+        await ensureBackingAudio(song);
+        if (el.audio.paused) await el.audio.play();
+        else el.audio.pause();
+      } catch (error) {
+        setStatus("Could not play synced backing: " + error.message, "warn");
+      }
+      return;
+    }
     if (!el.audio.paused) el.audio.pause();
     api.playPause();
   };
   el.stop.onclick = () => {
-    if (playerReady) api.stop();
+    if (!playerReady) return;
+    if (backingModeActive) {
+      el.audio.pause();
+      el.audio.currentTime = backingLoopEnabled && backingLoopEndMs > backingLoopStartMs ? backingLoopStartMs / 1000 : 0;
+      syncCursorFromBacking();
+      el.play.textContent = "▶";
+    } else {
+      api.stop();
+    }
   };
   el.countIn.onclick = () => {
+    if (backingModeActive) return;
     el.countIn.classList.toggle("active");
     api.countInVolume = el.countIn.classList.contains("active") ? 1 : 0;
   };
   el.metro.onclick = () => {
+    if (backingModeActive) return;
     el.metro.classList.toggle("active");
     api.metronomeVolume = el.metro.classList.contains("active") ? 1 : 0;
   };
   el.loop.onclick = () => {
+    if (backingModeActive) {
+      backingLoopEnabled = !backingLoopEnabled;
+      el.loop.classList.toggle("active", backingLoopEnabled);
+      if (!backingLoopStartMs && !backingLoopEndMs && backingLoopEnabled) {
+        backingLoopStartMs = 0;
+        backingLoopEndMs = (Number(el.audio.duration) || 0) * 1000;
+        el.loopStatus.textContent = "Looping the whole backing track.";
+      } else {
+        el.loopStatus.textContent = backingLoopEnabled ? "Backing-track loop enabled." : "Backing-track loop paused.";
+      }
+      return;
+    }
     api.isLooping = !api.isLooping;
     el.loop.classList.toggle("active", api.isLooping);
     if (!api.playbackRange && api.isLooping) {
@@ -975,7 +1381,8 @@
   el.speed.oninput = () => {
     const value = parseInt(el.speed.value, 10);
     el.speedValue.textContent = value + "%";
-    api.playbackSpeed = value / 100;
+    if (backingModeActive) el.audio.playbackRate = value / 100;
+    else api.playbackSpeed = value / 100;
   };
   el.zoom.oninput = () => {
     const value = parseInt(el.zoom.value, 10);
@@ -986,15 +1393,55 @@
   };
   el.applyLoop.onclick = applyLoopRange;
   el.clearLoop.onclick = clearLoopRange;
+  el.synthMode.onclick = useSynthMode;
+  el.backingMode.onclick = useBackingMode;
+  el.autoSync.onclick = autoSyncWholeSong;
+  el.markSync.onclick = markCurrentAudioAtBar;
+  el.clearSync.onclick = clearSongSyncPoints;
 
   el.audio.addEventListener("play", () => {
     if (scorePlaying) {
       try { api.playPause(); } catch (e) {}
     }
+    if (backingModeActive) {
+      el.play.textContent = "Ⅱ";
+      startBackingSyncTimer();
+      setStatus("Synced backing playing.", "ok");
+    }
+  });
+  el.audio.addEventListener("pause", () => {
+    if (backingModeActive) {
+      el.play.textContent = "▶";
+      stopBackingSyncTimer();
+      syncCursorFromBacking();
+    }
+  });
+  el.audio.addEventListener("ended", () => {
+    if (backingModeActive) {
+      el.play.textContent = "▶";
+      stopBackingSyncTimer();
+      syncCursorFromBacking();
+    }
+  });
+  el.audio.addEventListener("timeupdate", () => {
+    updateSyncCurrentTime();
+    if (backingModeActive && !backingSyncTimer) syncCursorFromBacking();
+  });
+  el.audio.addEventListener("seeked", () => {
+    updateSyncCurrentTime();
+    if (backingModeActive) syncCursorFromBacking();
+  });
+  el.audio.addEventListener("ratechange", () => {
+    if (backingModeActive) {
+      const pct = Math.round(el.audio.playbackRate * 100);
+      el.speed.value = String(Math.max(25, Math.min(150, pct)));
+      el.speedValue.textContent = pct + "%";
+    }
   });
   el.audioStop.onclick = () => {
     el.audio.pause();
-    el.audio.currentTime = 0;
+    el.audio.currentTime = backingModeActive && backingLoopEnabled ? backingLoopStartMs / 1000 : 0;
+    if (backingModeActive) syncCursorFromBacking();
   };
 
   window.addEventListener("beforeunload", revokeBackingUrl);
@@ -1004,9 +1451,10 @@
       setStatus("Opening local Pro library…");
       await openDatabase();
       await refreshCache();
-      showEmpty("DT Music Trainer Pro", "Phase 2 is ready. Add a song's PDF, interactive score and backing track to the Library, then open the interactive score.");
+      showEmpty("DT Music Trainer Pro", "Phase 3 is ready. Add an interactive score and backing track, open the score, then choose Synced Backing.");
       if (selectedSongId) renderSelectedSong();
-      setStatus("Phase 2 ready · local library", "ok");
+      updateSourceUI();
+      setStatus("Phase 3 ready · synced backing available", "ok");
     } catch (error) {
       console.error(error);
       setStatus("Could not open local library: " + error.message, "warn");
