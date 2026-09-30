@@ -15,7 +15,7 @@
   <header class="topbar">
     <div class="brand-wrap">
       <div class="brand">DT Music Trainer Pro</div>
-      <div class="sub">Phase 2 · Interactive Score Library</div>
+      <div class="sub">Phase 3 · Synced Backing Track</div>
     </div>
     <div id="statusPill" class="status-pill">Starting…</div>
   </header>
@@ -97,6 +97,34 @@
         <button id="clearLoop" class="btn ghost" type="button" disabled>Clear Loop Range</button>
         <div id="loopStatus" class="mini-status">No loop range set.</div>
       </div>
+
+      <div class="section">
+        <div class="section-title">BACKING TRACK SYNC</div>
+        <div class="source-toggle">
+          <button id="synthModeBtn" class="btn small active-source" type="button">Synth</button>
+          <button id="backingModeBtn" class="btn small" type="button" disabled>Synced Backing</button>
+        </div>
+
+        <button id="autoSyncBtn" class="btn primary" type="button" disabled>Auto Sync Whole Song</button>
+
+        <div class="loop-row">
+          <div class="field">
+            <label for="syncBarInput">BAR</label>
+            <input id="syncBarInput" type="number" min="1" value="1" />
+          </div>
+          <div class="field">
+            <label>CURRENT AUDIO</label>
+            <div id="syncCurrentTime" class="sync-time-box">00:00.000</div>
+          </div>
+        </div>
+
+        <button id="markSyncBtn" class="btn" type="button" disabled>Mark Current Audio at Bar Start</button>
+        <button id="clearSyncBtn" class="btn ghost" type="button" disabled>Clear Sync Points</button>
+        <div id="syncPointList" class="sync-point-list">
+          <div class="note">Load a song with both an interactive score and backing track.</div>
+        </div>
+        <div id="syncStatus" class="mini-status">Sync points are saved with the song and included in Library ZIP backups.</div>
+      </div>
     </aside>
 
     <main class="main">
@@ -150,7 +178,7 @@
         <div class="audio-row">
           <div class="audio-label">
             <div id="audioTitle" class="audio-title">No backing track loaded</div>
-            <div class="audio-note">Phase 2 stores audio with the song. Score-sync comes next.</div>
+            <div id="audioModeNote" class="audio-note">Synth mode. Switch to Synced Backing after creating sync points.</div>
           </div>
           <audio id="backingAudio" controls preload="metadata"></audio>
           <button id="audioStopBtn" type="button">Stop Audio</button>
