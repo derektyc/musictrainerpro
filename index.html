@@ -114,6 +114,29 @@
     }
     .two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
     .mini-status{font-size:11px;color:var(--muted);margin-top:8px;line-height:1.35}
+
+    /* alphaTab playback cursor styling.
+       alphaTab creates these elements, but the host app must make them visible. */
+    .at-cursor-bar{
+      background:rgba(242,182,106,.22);
+      border-radius:3px;
+      pointer-events:none;
+    }
+    .at-cursor-beat{
+      background:#d97918;
+      width:3px;
+      border-radius:3px;
+      pointer-events:none;
+      box-shadow:0 0 0 1px rgba(255,255,255,.25);
+    }
+    .at-selection div{
+      background:rgba(64,128,255,.10);
+    }
+    .at-highlight *{
+      fill:#d97918;
+      stroke:#d97918;
+    }
+
     @media(max-width:860px){
       .workspace{grid-template-columns:1fr}
       .sidebar{border-right:0;border-bottom:1px solid var(--border);padding:10px}
@@ -137,7 +160,7 @@
   <header class="topbar">
     <div class="brand-wrap">
       <div class="brand">DT Music Trainer</div>
-      <div class="sub">Interactive Score Prototype · alphaTab 1.8.4</div>
+      <div class="sub">Interactive Score Prototype v1.1 · alphaTab 1.8.4</div>
     </div>
     <div id="statusPill" class="status-pill">Choose a Guitar Pro or MusicXML file</div>
   </header>
@@ -308,6 +331,9 @@
     player: {
       enablePlayer: true,
       enableUserInteraction: true,
+      enableCursor: true,
+      enableAnimatedBeatCursor: true,
+      enableElementHighlighting: true,
       soundFont: ALPHATAB_BASE + "soundfont/sonivox.sf2",
       scrollElement: el.viewport
     }
