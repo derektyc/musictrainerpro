@@ -1,0 +1,560 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#202020" />
+  <title>DT Music Trainer · Interactive Score Prototype</title>
+
+  <!-- Pinned for stability. Later we can host alphaTab locally for full offline/PWA support. -->
+  <script src="https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.4/dist/alphaTab.min.js"></script>
+
+  <style>
+    :root{
+      --bg:#202020;
+      --panel:#2b2b2b;
+      --panel2:#343434;
+      --panel3:#3d3d3d;
+      --text:#f7f7f7;
+      --muted:#bcbcbc;
+      --accent:#f2b66a;
+      --accent2:#ffd49a;
+      --danger:#ff7b7b;
+      --border:#4a4a4a;
+      --shadow:0 12px 32px rgba(0,0,0,.28);
+    }
+    *{box-sizing:border-box}
+    html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text);font-family:Arial,Helvetica,sans-serif}
+    button,input,select{font:inherit}
+    button{cursor:pointer}
+    .app{min-height:100vh;display:flex;flex-direction:column}
+    .topbar{
+      position:sticky;top:0;z-index:40;
+      display:flex;align-items:center;gap:14px;justify-content:space-between;
+      padding:12px 16px;background:rgba(32,32,32,.96);
+      backdrop-filter:blur(12px);border-bottom:1px solid var(--border)
+    }
+    .brand-wrap{min-width:0}
+    .brand{font-weight:800;letter-spacing:.02em}
+    .sub{font-size:12px;color:var(--muted);margin-top:2px}
+    .status-pill{
+      max-width:44vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+      padding:7px 10px;border-radius:999px;background:#181818;border:1px solid var(--border);
+      color:var(--muted);font-size:12px
+    }
+    .workspace{display:grid;grid-template-columns:300px minmax(0,1fr);flex:1;min-height:0}
+    .sidebar{
+      padding:16px;background:#252525;border-right:1px solid var(--border);
+      overflow:auto
+    }
+    .section{
+      background:var(--panel);border:1px solid var(--border);
+      border-radius:16px;padding:14px;margin-bottom:14px;box-shadow:var(--shadow)
+    }
+    .section-title{
+      font-size:12px;color:var(--accent);font-weight:800;letter-spacing:.08em;
+      margin-bottom:10px
+    }
+    .btn{
+      width:100%;border:1px solid var(--border);background:var(--panel3);color:#fff;
+      border-radius:12px;padding:11px 12px;margin:5px 0;font-weight:700
+    }
+    .btn:hover{filter:brightness(1.08)}
+    .btn.primary{background:var(--accent);color:#191919;border-color:transparent}
+    .btn.ghost{background:#242424}
+    .file-btn{position:relative;overflow:hidden}
+    .file-btn input{position:absolute;inset:0;opacity:0;cursor:pointer}
+    .note{font-size:12px;line-height:1.45;color:var(--muted);margin-top:9px}
+    .song-title{font-size:18px;font-weight:800;word-break:break-word}
+    .song-artist{font-size:13px;color:var(--muted);margin-top:4px}
+    .track-list{display:flex;flex-direction:column;gap:7px}
+    .track-btn{
+      width:100%;text-align:left;border:1px solid var(--border);border-radius:10px;
+      padding:9px 10px;background:#222;color:#eee
+    }
+    .track-btn.active{border-color:var(--accent);background:#3a3127;color:var(--accent2)}
+    .main{min-width:0;display:flex;flex-direction:column;background:#efefef}
+    .score-viewport{position:relative;flex:1;min-height:420px;overflow:auto;background:#fff}
+    #alphaTab{min-height:100%;padding:10px 4px 90px}
+    .empty{
+      min-height:65vh;display:flex;align-items:center;justify-content:center;padding:24px;
+      text-align:center;color:#555
+    }
+    .empty-card{
+      max-width:560px;border:2px dashed #cfcfcf;border-radius:22px;padding:34px;background:#fafafa
+    }
+    .empty-card h2{margin:0 0 9px;color:#242424}
+    .empty-card p{line-height:1.55;margin:0;color:#666}
+    .loading{
+      position:absolute;inset:0;display:none;align-items:center;justify-content:center;
+      background:rgba(255,255,255,.76);z-index:10;color:#222;font-weight:800
+    }
+    .controls{
+      position:sticky;bottom:0;z-index:30;
+      background:rgba(32,32,32,.97);backdrop-filter:blur(12px);
+      border-top:1px solid #111;color:#fff;padding:10px 12px
+    }
+    .transport{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .icon-btn{
+      border:1px solid var(--border);background:#3b3b3b;color:#fff;
+      min-width:44px;height:42px;border-radius:11px;font-weight:800
+    }
+    .icon-btn.active{background:var(--accent);color:#181818;border-color:transparent}
+    .icon-btn:disabled{opacity:.4;cursor:progress}
+    .position{font-variant-numeric:tabular-nums;color:#ddd;font-size:13px;min-width:104px;text-align:center}
+    .control-group{display:flex;align-items:center;gap:7px;background:#292929;border:1px solid #444;border-radius:11px;padding:6px 9px}
+    .control-group label{font-size:11px;color:#bbb;font-weight:700}
+    .control-group input[type=range]{width:115px}
+    .value{font-size:12px;min-width:40px;text-align:right;color:var(--accent2);font-weight:700}
+    .loop-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+    .field label{display:block;font-size:11px;color:#bbb;margin-bottom:5px}
+    .field input,.field select{
+      width:100%;background:#1f1f1f;color:#fff;border:1px solid var(--border);
+      border-radius:9px;padding:9px
+    }
+    .two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    .mini-status{font-size:11px;color:var(--muted);margin-top:8px;line-height:1.35}
+    @media(max-width:860px){
+      .workspace{grid-template-columns:1fr}
+      .sidebar{border-right:0;border-bottom:1px solid var(--border);padding:10px}
+      .section{margin-bottom:9px}
+      .desktop-extra{display:none}
+      .score-viewport{min-height:58vh}
+      .status-pill{max-width:45vw}
+    }
+    @media(max-width:560px){
+      .topbar{padding:10px}
+      .sub{display:none}
+      .transport{gap:6px}
+      .control-group{width:100%;justify-content:space-between}
+      .control-group input[type=range]{flex:1;width:auto}
+      .position{margin-left:auto}
+    }
+  </style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand-wrap">
+      <div class="brand">DT Music Trainer</div>
+      <div class="sub">Interactive Score Prototype · alphaTab 1.8.4</div>
+    </div>
+    <div id="statusPill" class="status-pill">Choose a Guitar Pro or MusicXML file</div>
+  </header>
+
+  <div class="workspace">
+    <aside class="sidebar">
+      <div class="section">
+        <div class="section-title">OPEN INTERACTIVE SCORE</div>
+        <button class="btn primary file-btn">
+          Upload Guitar Pro / MusicXML
+          <input id="scoreFile" type="file"
+            accept=".gp,.gpx,.gp3,.gp4,.gp5,.gp6,.gp7,.gp8,.musicxml,.mxl,.xml,application/xml,text/xml" />
+        </button>
+        <button id="sampleBtn" class="btn ghost" type="button">Open alphaTab Test Song</button>
+        <div class="note">This prototype reads the score locally in your browser. Your uploaded file is not sent to DT Music Trainer.</div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">SONG</div>
+        <div id="songTitle" class="song-title">No score loaded</div>
+        <div id="songArtist" class="song-artist">—</div>
+        <div id="songMeta" class="mini-status">Upload a score to see its tracks and bar count.</div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">TRACKS</div>
+        <div id="trackList" class="track-list">
+          <div class="note">Tracks will appear here.</div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">PRACTICE LOOP</div>
+        <div class="loop-row">
+          <div class="field">
+            <label for="loopStart">START BAR</label>
+            <input id="loopStart" type="number" min="1" value="1">
+          </div>
+          <div class="field">
+            <label for="loopEnd">END BAR</label>
+            <input id="loopEnd" type="number" min="1" value="4">
+          </div>
+        </div>
+        <button id="applyLoop" class="btn" type="button" disabled>Loop Selected Bars</button>
+        <button id="clearLoop" class="btn ghost" type="button" disabled>Clear Loop Range</button>
+        <div id="loopStatus" class="mini-status">No loop range set.</div>
+      </div>
+
+      <div class="section desktop-extra">
+        <div class="section-title">PROTOTYPE SCOPE</div>
+        <div class="note">
+          First milestone: prove Guitar Pro/MusicXML rendering and playback inside DT Music Trainer.
+          PDF + backing-track association will be connected after this player is stable.
+        </div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div id="scoreViewport" class="score-viewport">
+        <div id="emptyState" class="empty">
+          <div class="empty-card">
+            <h2>Interactive Score</h2>
+            <p>Upload a Guitar Pro or MusicXML file. DT Music Trainer will render the notation/tab and enable playback, moving cursor, speed control, track switching and bar looping.</p>
+          </div>
+        </div>
+        <div id="loading" class="loading">Rendering score…</div>
+        <div id="alphaTab"></div>
+      </div>
+
+      <div class="controls">
+        <div class="transport">
+          <button id="stopBtn" class="icon-btn" type="button" title="Stop" disabled>⏮</button>
+          <button id="playBtn" class="icon-btn" type="button" title="Play / Pause" disabled>▶</button>
+          <span id="position" class="position">00:00 / 00:00</span>
+
+          <button id="countInBtn" class="icon-btn" type="button" title="Count-in" disabled>1-2</button>
+          <button id="metroBtn" class="icon-btn" type="button" title="Metronome" disabled>♩</button>
+          <button id="loopBtn" class="icon-btn" type="button" title="Loop current range" disabled>↻</button>
+
+          <div class="control-group">
+            <label for="speed">SPEED</label>
+            <input id="speed" type="range" min="25" max="150" value="100" step="1" disabled>
+            <span id="speedValue" class="value">100%</span>
+          </div>
+
+          <div class="control-group">
+            <label for="zoom">ZOOM</label>
+            <input id="zoom" type="range" min="50" max="150" value="100" step="10">
+            <span id="zoomValue" class="value">100%</span>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+
+  const el = {
+    file: $("scoreFile"),
+    sample: $("sampleBtn"),
+    status: $("statusPill"),
+    title: $("songTitle"),
+    artist: $("songArtist"),
+    meta: $("songMeta"),
+    tracks: $("trackList"),
+    viewport: $("scoreViewport"),
+    empty: $("emptyState"),
+    loading: $("loading"),
+    alpha: $("alphaTab"),
+    stop: $("stopBtn"),
+    play: $("playBtn"),
+    countIn: $("countInBtn"),
+    metro: $("metroBtn"),
+    loop: $("loopBtn"),
+    speed: $("speed"),
+    speedValue: $("speedValue"),
+    zoom: $("zoom"),
+    zoomValue: $("zoomValue"),
+    position: $("position"),
+    loopStart: $("loopStart"),
+    loopEnd: $("loopEnd"),
+    applyLoop: $("applyLoop"),
+    clearLoop: $("clearLoop"),
+    loopStatus: $("loopStatus")
+  };
+
+  const ALPHATAB_BASE = "https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.4/dist/";
+  let currentFilename = "";
+  let playerReady = false;
+
+  function setStatus(text) {
+    el.status.textContent = text;
+    el.status.title = text;
+  }
+
+  function fmt(ms) {
+    if (!Number.isFinite(ms) || ms < 0) ms = 0;
+    const total = Math.floor(ms / 1000);
+    const m = Math.floor(total / 60);
+    const s = total % 60;
+    return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
+  }
+
+  function resetTransportState() {
+    playerReady = false;
+    [el.stop, el.play, el.countIn, el.metro, el.loop, el.speed, el.applyLoop, el.clearLoop]
+      .forEach(x => x.disabled = true);
+    el.play.textContent = "▶";
+    el.countIn.classList.remove("active");
+    el.metro.classList.remove("active");
+    el.loop.classList.remove("active");
+    el.position.textContent = "00:00 / 00:00";
+  }
+
+  const api = new alphaTab.AlphaTabApi(el.alpha, {
+    core: {
+      fontDirectory: ALPHATAB_BASE + "font/",
+      scriptFile: ALPHATAB_BASE + "alphaTab.min.js",
+      useWorkers: true
+    },
+    display: {
+      layoutMode: "page",
+      scale: 1
+    },
+    player: {
+      enablePlayer: true,
+      enableUserInteraction: true,
+      soundFont: ALPHATAB_BASE + "soundfont/sonivox.sf2",
+      scrollElement: el.viewport
+    }
+  });
+
+  window.dtInteractiveAlphaTab = api;
+
+  function renderTrackButtons(score) {
+    el.tracks.innerHTML = "";
+
+    const all = document.createElement("button");
+    all.type = "button";
+    all.className = "track-btn";
+    all.textContent = "All tracks";
+    all.onclick = () => api.renderTracks(score.tracks.slice());
+    el.tracks.appendChild(all);
+
+    score.tracks.forEach((track, index) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "track-btn";
+      btn.dataset.trackIndex = String(track.index);
+      btn.textContent = (index + 1) + ". " + (track.name || ("Track " + (index + 1)));
+      btn.onclick = () => api.renderTracks([track]);
+      el.tracks.appendChild(btn);
+    });
+  }
+
+  function markActiveTracks() {
+    const active = new Set((api.tracks || []).map(t => String(t.index)));
+    const buttons = [...el.tracks.querySelectorAll(".track-btn")];
+
+    buttons.forEach((btn, index) => {
+      if (index === 0) {
+        const scoreCount = api.score ? api.score.tracks.length : 0;
+        btn.classList.toggle("active", active.size === scoreCount && scoreCount > 1);
+      } else {
+        btn.classList.toggle("active", active.has(btn.dataset.trackIndex));
+      }
+    });
+  }
+
+  function firstBeatForBar(track, masterBarIndex, useLastBeat) {
+    try {
+      const stave = track.staves[0];
+      const bar = stave.bars[masterBarIndex];
+      const beats = [];
+      bar.voices.forEach(v => v.beats.forEach(b => beats.push(b)));
+      if (!beats.length) return null;
+      return useLastBeat ? beats[beats.length - 1] : beats[0];
+    } catch {
+      return null;
+    }
+  }
+
+  function masterBarPlaybackStart(masterBar) {
+    try {
+      if (api.tickCache && typeof api.tickCache.getMasterBarStart === "function") {
+        return api.tickCache.getMasterBarStart(masterBar);
+      }
+    } catch {}
+    return Number(masterBar.start) || 0;
+  }
+
+  function applyLoopRange() {
+    if (!api.score || !api.score.masterBars || !api.score.masterBars.length) return;
+
+    const total = api.score.masterBars.length;
+    let startBar = Math.max(1, Math.min(total, parseInt(el.loopStart.value || "1", 10)));
+    let endBar = Math.max(1, Math.min(total, parseInt(el.loopEnd.value || String(startBar), 10)));
+
+    if (endBar < startBar) [startBar, endBar] = [endBar, startBar];
+
+    el.loopStart.value = startBar;
+    el.loopEnd.value = endBar;
+
+    const bars = api.score.masterBars;
+    const startMaster = bars[startBar - 1];
+    const endMaster = bars[endBar - 1];
+
+    const startTick = masterBarPlaybackStart(startMaster);
+    let endTick = api.endTick;
+
+    if (endBar < total) {
+      endTick = masterBarPlaybackStart(bars[endBar]);
+    } else if (!Number.isFinite(endTick) || endTick <= startTick) {
+      const ownStart = Number(endMaster.start) || startTick;
+      const approxNext = endMaster.nextMasterBar ? Number(endMaster.nextMasterBar.start) : NaN;
+      endTick = Number.isFinite(approxNext) ? approxNext : ownStart + 3840;
+    }
+
+    api.playbackRange = { startTick, endTick };
+    api.isLooping = true;
+    el.loop.classList.add("active");
+    el.loopStatus.textContent = "Looping bars " + startBar + "–" + endBar + ".";
+
+    try {
+      const track = api.tracks && api.tracks.length ? api.tracks[0] : api.score.tracks[0];
+      const startBeat = firstBeatForBar(track, startBar - 1, false);
+      const endBeat = firstBeatForBar(track, endBar - 1, true);
+      if (startBeat && endBeat && typeof api.highlightPlaybackRange === "function") {
+        api.highlightPlaybackRange(startBeat, endBeat);
+      }
+    } catch {}
+  }
+
+  function clearLoopRange() {
+    api.playbackRange = null;
+    api.isLooping = false;
+    el.loop.classList.remove("active");
+    el.loopStatus.textContent = "No loop range set.";
+    try { api.clearPlaybackRangeHighlight(); } catch {}
+  }
+
+  async function loadLocalFile(file) {
+    if (!file) return;
+    resetTransportState();
+    currentFilename = file.name;
+    setStatus("Loading " + file.name + "…");
+    el.empty.style.display = "none";
+    el.loading.style.display = "flex";
+
+    try {
+      const data = await file.arrayBuffer();
+      const accepted = api.load(data);
+      if (!accepted) throw new Error("alphaTab did not recognise this file format.");
+    } catch (err) {
+      console.error(err);
+      el.loading.style.display = "none";
+      setStatus("Could not open score");
+      alert("Could not open this interactive score.\\n\\n" + (err && err.message ? err.message : err));
+    }
+  }
+
+  el.file.addEventListener("change", () => {
+    const file = el.file.files && el.file.files[0];
+    loadLocalFile(file);
+    el.file.value = "";
+  });
+
+  el.sample.addEventListener("click", () => {
+    resetTransportState();
+    currentFilename = "alphaTab test song";
+    el.empty.style.display = "none";
+    el.loading.style.display = "flex";
+    setStatus("Loading test song…");
+    api.load("https://www.alphatab.net/files/canon.gp");
+  });
+
+  api.scoreLoaded.on((score) => {
+    el.empty.style.display = "none";
+    el.title.textContent = score.title || currentFilename.replace(/\.[^.]+$/, "") || "Untitled score";
+    el.artist.textContent = score.artist || score.album || "Unknown artist";
+
+    const trackCount = score.tracks ? score.tracks.length : 0;
+    const barCount = score.masterBars ? score.masterBars.length : 0;
+    el.meta.textContent = trackCount + " track" + (trackCount === 1 ? "" : "s") +
+      " · " + barCount + " bar" + (barCount === 1 ? "" : "s");
+
+    el.loopStart.max = String(Math.max(1, barCount));
+    el.loopEnd.max = String(Math.max(1, barCount));
+    el.loopStart.value = "1";
+    el.loopEnd.value = String(Math.min(4, Math.max(1, barCount)));
+
+    renderTrackButtons(score);
+    el.applyLoop.disabled = false;
+    el.clearLoop.disabled = false;
+    setStatus("Score loaded · preparing playback…");
+  });
+
+  api.renderStarted.on(() => {
+    el.loading.style.display = "flex";
+    markActiveTracks();
+  });
+
+  api.renderFinished.on(() => {
+    el.loading.style.display = "none";
+    markActiveTracks();
+    if (playerReady) setStatus("Ready");
+  });
+
+  api.soundFontLoad.on((e) => {
+    if (!e || !e.total) return;
+    const p = Math.max(0, Math.min(100, Math.floor((e.loaded / e.total) * 100)));
+    setStatus("Preparing instrument sounds · " + p + "%");
+  });
+
+  api.playerReady.on(() => {
+    playerReady = true;
+    [el.stop, el.play, el.countIn, el.metro, el.loop, el.speed].forEach(x => x.disabled = false);
+    setStatus("Ready");
+  });
+
+  api.playerStateChanged.on((e) => {
+    el.play.textContent = e.state === alphaTab.synth.PlayerState.Playing ? "Ⅱ" : "▶";
+  });
+
+  api.playerPositionChanged.on((e) => {
+    el.position.textContent = fmt(e.currentTime) + " / " + fmt(e.endTime);
+  });
+
+  api.error.on((e) => {
+    console.error("alphaTab error:", e);
+    el.loading.style.display = "none";
+    setStatus("Score/player error");
+  });
+
+  el.play.onclick = () => { if (playerReady) api.playPause(); };
+  el.stop.onclick = () => { if (playerReady) api.stop(); };
+
+  el.countIn.onclick = () => {
+    el.countIn.classList.toggle("active");
+    api.countInVolume = el.countIn.classList.contains("active") ? 1 : 0;
+  };
+
+  el.metro.onclick = () => {
+    el.metro.classList.toggle("active");
+    api.metronomeVolume = el.metro.classList.contains("active") ? 1 : 0;
+  };
+
+  el.loop.onclick = () => {
+    api.isLooping = !api.isLooping;
+    el.loop.classList.toggle("active", api.isLooping);
+    if (!api.playbackRange && api.isLooping) {
+      el.loopStatus.textContent = "Looping the whole song. Set bar numbers for a section loop.";
+    } else if (!api.isLooping && api.playbackRange) {
+      el.loopStatus.textContent = "Bar range saved, looping paused.";
+    }
+  };
+
+  el.speed.oninput = () => {
+    const value = parseInt(el.speed.value, 10);
+    el.speedValue.textContent = value + "%";
+    api.playbackSpeed = value / 100;
+  };
+
+  el.zoom.oninput = () => {
+    const value = parseInt(el.zoom.value, 10);
+    el.zoomValue.textContent = value + "%";
+    api.settings.display.scale = value / 100;
+    api.updateSettings();
+    api.render();
+  };
+
+  el.applyLoop.onclick = applyLoopRange;
+  el.clearLoop.onclick = clearLoopRange;
+})();
+</script>
+</body>
+</html>
