@@ -1,0 +1,24 @@
+.practice-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.practice-grid.three{grid-template-columns:repeat(3,1fr)}
+.practice-check{display:flex;align-items:center;gap:8px;margin:9px 0;color:#ddd;font-size:11px}
+.practice-check input{accent-color:var(--accent)}
+.practice-progress-card{background:#202020;border:1px solid #454545;border-radius:12px;padding:10px;margin-top:9px}
+.practice-progress-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.practice-speed-now{font-size:20px;font-weight:900;color:var(--accent2)}
+.practice-reps{font-size:11px;color:var(--muted);text-align:right}
+.practice-progress-track{height:8px;border-radius:999px;background:#121212;overflow:hidden;margin:9px 0 6px}
+.practice-progress-fill{height:100%;width:0;background:linear-gradient(90deg,var(--accent),#ffd49a);transition:width .2s ease}
+.practice-step-text{font-size:10px;color:#bbb;line-height:1.4}
+.practice-actions{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:8px}
+.practice-actions .btn{margin:0}
+.practice-success{background:#315d43!important;color:#d8ffe5!important;border-color:#477b5b!important}
+.practice-retry{background:#493d28!important;color:#ffe2aa!important;border-color:#705b37!important}
+.practice-session-active{box-shadow:0 0 0 1px rgba(242,182,106,.35) inset}
+.practice-source-pill{display:inline-flex;align-items:center;border:1px solid #555;background:#1c1c1c;border-radius:999px;padding:4px 7px;font-size:9px;color:#bbb;margin-top:7px}
+.practice-source-pill.backing{color:#cce8ff;border-color:#41657b}
+.practice-source-pill.synth{color:var(--accent2);border-color:#705936}
+.practice-countdown{position:fixed;inset:0;z-index:200;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.58);backdrop-filter:blur(4px);pointer-events:none}
+.practice-countdown.show{display:flex}
+.practice-countdown-number{width:150px;height:150px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#202020;border:3px solid var(--accent);color:var(--accent2);font-size:70px;font-weight:900;box-shadow:0 22px 60px rgba(0,0,0,.45)}
+.practice-target-done{color:var(--ok);font-weight:800}
+@media(max-width:560px){.practice-grid.three{grid-template-columns:1fr 1fr}.practice-actions{grid-template-columns:1fr}.practice-countdown-number{width:120px;height:120px;font-size:58px}}
