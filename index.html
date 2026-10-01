@@ -7,6 +7,7 @@
   <title>DT Music Trainer Pro</title>
 
   <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="./practice.css" />
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.4/dist/alphaTab.min.js"></script>
 </head>
@@ -15,7 +16,7 @@
   <header class="topbar">
     <div class="brand-wrap">
       <div class="brand">DT Music Trainer Pro</div>
-      <div class="sub">Phase 3 · Synced Backing Track</div>
+      <div class="sub">Phase 4 · Practice Mode</div>
     </div>
     <div id="statusPill" class="status-pill">Starting…</div>
   </header>
@@ -98,6 +99,67 @@
         <div id="loopStatus" class="mini-status">No loop range set.</div>
       </div>
 
+      <div id="practiceModeSection" class="section">
+        <div class="section-title">PRACTICE MODE</div>
+
+        <div class="practice-grid">
+          <div class="field">
+            <label for="practiceStartBar">START BAR</label>
+            <input id="practiceStartBar" type="number" min="1" value="1" />
+          </div>
+          <div class="field">
+            <label for="practiceEndBar">END BAR</label>
+            <input id="practiceEndBar" type="number" min="1" value="4" />
+          </div>
+        </div>
+
+        <div class="practice-grid three" style="margin-top:7px">
+          <div class="field">
+            <label for="practiceStartSpeed">START %</label>
+            <input id="practiceStartSpeed" type="number" min="25" max="150" value="60" />
+          </div>
+          <div class="field">
+            <label for="practiceTargetSpeed">TARGET %</label>
+            <input id="practiceTargetSpeed" type="number" min="25" max="150" value="100" />
+          </div>
+          <div class="field">
+            <label for="practiceIncrement">STEP %</label>
+            <input id="practiceIncrement" type="number" min="1" max="25" value="5" />
+          </div>
+        </div>
+
+        <div class="field" style="margin-top:7px">
+          <label for="practiceRepsPerStep">SUCCESSFUL REPS BEFORE SPEED INCREASE</label>
+          <input id="practiceRepsPerStep" type="number" min="1" max="20" value="3" />
+        </div>
+
+        <label class="practice-check">
+          <input id="practiceCountIn" type="checkbox" checked />
+          Count-in before each run / new speed step
+        </label>
+
+        <button id="practiceStartBtn" class="btn primary" type="button" disabled>Start Practice</button>
+
+        <div class="practice-progress-card">
+          <div class="practice-progress-head">
+            <div id="practiceSpeedNow" class="practice-speed-now">60%</div>
+            <div id="practiceRepNow" class="practice-reps">0 / 3 reps</div>
+          </div>
+          <div class="practice-progress-track"><div id="practiceProgressFill" class="practice-progress-fill"></div></div>
+          <div id="practiceStepText" class="practice-step-text">Start 60% → target 100%</div>
+          <div id="practiceSourcePill" class="practice-source-pill synth">Synth</div>
+        </div>
+
+        <div class="practice-actions">
+          <button id="practiceSuccessBtn" class="btn practice-success" type="button" disabled>✓ Successful Rep</button>
+          <button id="practiceRetryBtn" class="btn practice-retry" type="button" disabled>↺ Retry Section</button>
+          <button id="practiceResetBtn" class="btn ghost" type="button" disabled>Reset Progress</button>
+          <button id="practiceStopBtn" class="btn ghost" type="button" disabled>Stop Practice</button>
+        </div>
+        <div id="practiceStatus" class="mini-status">Open an interactive score first.</div>
+        <div class="note">After you play the section cleanly, tap Successful Rep. The speed increases automatically after the number of reps you set. Retry restarts the section without counting a success.</div>
+      </div>
+
       <div class="section">
         <div class="section-title">BACKING TRACK SYNC</div>
         <div class="source-toggle">
@@ -145,7 +207,7 @@
         <div id="emptyState" class="empty">
           <div class="empty-card">
             <h2 id="emptyTitle">DT Music Trainer Pro</h2>
-            <p id="emptyText">Phase 2 is ready. Add a song's PDF, interactive score and backing track to the Library, then open the interactive score.</p>
+            <p id="emptyText">Phase 4 adds guided practice sessions on top of the interactive score and synced backing-track player.</p>
           </div>
         </div>
         <div id="loading" class="loading">Rendering score…</div>
@@ -188,7 +250,9 @@
   </div>
 </div>
 
+<div id="practiceCountdown" class="practice-countdown"><div id="practiceCountdownNumber" class="practice-countdown-number">1</div></div>
 <div id="toast" class="toast"></div>
 <script src="./app.js"></script>
+<script src="./practice.js"></script>
 </body>
 </html>
