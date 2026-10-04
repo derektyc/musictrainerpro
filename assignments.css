@@ -5,9 +5,17 @@
 .assignment-summary-box{background:#202020;border:1px solid #444;border-radius:10px;padding:8px;text-align:center}
 .assignment-summary-box .n{font-size:17px;font-weight:850;color:var(--accent2)}
 .assignment-summary-box .l{font-size:9px;color:var(--muted);margin-top:2px}
-.assignment-modal{position:fixed;inset:0;z-index:160;background:rgba(0,0,0,.72);display:none;align-items:center;justify-content:center;padding:18px}
+
+/* Keep the dashboard above alphaTab's cursor/selection layers. */
+.assignment-modal{position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,.72);display:none;align-items:center;justify-content:center;padding:18px;isolation:isolate}
 .assignment-modal.show{display:flex}
-.assignment-shell{width:min(1080px,96vw);height:min(820px,94vh);background:#222;color:#fff;border:1px solid #555;border-radius:18px;box-shadow:0 24px 70px rgba(0,0,0,.5);display:flex;flex-direction:column;overflow:hidden}
+.assignment-shell{position:relative;z-index:2;width:min(1080px,96vw);height:min(820px,94vh);background:#222;color:#fff;border:1px solid #555;border-radius:18px;box-shadow:0 24px 70px rgba(0,0,0,.5);display:flex;flex-direction:column;overflow:hidden}
+body.assignment-modal-open{overflow:hidden}
+body.assignment-modal-open .at-cursor-bar,
+body.assignment-modal-open .at-cursor-beat,
+body.assignment-modal-open .at-selection,
+body.assignment-modal-open .at-highlight{visibility:hidden!important}
+
 .assignment-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border-bottom:1px solid #444;background:#282828}
 .assignment-head-title{font-size:17px;font-weight:850}
 .assignment-head-sub{font-size:10px;color:#aaa;margin-top:2px}
@@ -42,6 +50,14 @@
 .assignment-badge.complete{color:#aaf0bf;border-color:#376b49}
 .assignment-badge.overdue{color:#ffb1b1;border-color:#804747}
 .assignment-note{font-size:10px;line-height:1.45;color:#cfcfcf;margin-top:8px;padding:8px;background:#262626;border-radius:8px}
+
+.assignment-frequency{margin-top:8px;display:flex;align-items:center;justify-content:space-between;gap:10px;background:#262626;border:1px solid #444;border-radius:9px;padding:8px 10px}
+.assignment-frequency.met{border-color:#376b49;background:#202821}
+.assignment-frequency-main{font-size:10px;font-weight:800;color:#ddd}
+.assignment-frequency-progress{font-size:10px;font-weight:850;color:var(--accent2);white-space:nowrap}
+.assignment-frequency.met .assignment-frequency-progress{color:#aaf0bf}
+.assignment-requirement-form{padding-top:2px}
+
 .assignment-progress{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px}
 .assignment-progress-box{background:#292929;border-radius:8px;padding:7px;text-align:center}
 .assignment-progress-box .v{font-size:12px;font-weight:850;color:var(--accent2)}
@@ -51,7 +67,20 @@
 .assignment-student-heading{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px}
 .assignment-student-name{font-size:18px;font-weight:850}
 .assignment-student-meta{font-size:10px;color:#aaa;margin-top:3px}
-.assignment-toast{position:fixed;z-index:180;left:50%;bottom:24px;transform:translateX(-50%);background:#171717;color:#fff;border:1px solid #555;border-radius:10px;padding:9px 12px;font-size:11px;display:none;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+.assignment-toast{position:fixed;z-index:2147483100;left:50%;bottom:24px;transform:translateX(-50%);background:#171717;color:#fff;border:1px solid #555;border-radius:10px;padding:9px 12px;font-size:11px;display:none;box-shadow:0 10px 30px rgba(0,0,0,.35)}
 .assignment-toast.show{display:block}
-@media(max-width:800px){.assignment-dashboard{grid-template-columns:1fr}.assignment-toolbar{grid-template-columns:1fr 1fr}.assignment-progress{grid-template-columns:1fr 1fr}.assignment-shell{height:96vh}}
-@media(max-width:520px){.assignment-modal{padding:0}.assignment-shell{width:100vw;height:100vh;border-radius:0;border:0}.assignment-toolbar{grid-template-columns:1fr}.assignment-form-grid,.assignment-form-grid.three{grid-template-columns:1fr}.assignment-summary-grid{grid-template-columns:repeat(3,1fr)}}
+
+@media(max-width:800px){
+  .assignment-dashboard{grid-template-columns:1fr}
+  .assignment-toolbar{grid-template-columns:1fr 1fr}
+  .assignment-progress{grid-template-columns:1fr 1fr}
+  .assignment-shell{height:96vh}
+}
+@media(max-width:520px){
+  .assignment-modal{padding:0}
+  .assignment-shell{width:100vw;height:100vh;border-radius:0;border:0}
+  .assignment-toolbar{grid-template-columns:1fr}
+  .assignment-form-grid,.assignment-form-grid.three{grid-template-columns:1fr}
+  .assignment-summary-grid{grid-template-columns:repeat(3,1fr)}
+  .assignment-frequency{align-items:flex-start;flex-direction:column}
+}
