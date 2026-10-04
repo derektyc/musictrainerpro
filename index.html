@@ -16,7 +16,7 @@
   <header class="topbar">
     <div class="brand-wrap">
       <div class="brand">DT Music Trainer Pro</div>
-      <div class="sub">Phase 4 · Practice Mode</div>
+      <div class="sub">Phase 4 · Automatic Practice Mode</div>
     </div>
     <div id="statusPill" class="status-pill">Starting…</div>
   </header>
@@ -129,13 +129,13 @@
         </div>
 
         <div class="field" style="margin-top:7px">
-          <label for="practiceRepsPerStep">SUCCESSFUL REPS BEFORE SPEED INCREASE</label>
+          <label for="practiceRepsPerStep">REPS BEFORE SPEED INCREASE</label>
           <input id="practiceRepsPerStep" type="number" min="1" max="20" value="3" />
         </div>
 
         <label class="practice-check">
           <input id="practiceCountIn" type="checkbox" checked />
-          Count-in before each run / new speed step
+          Count-in before start / each new speed step
         </label>
 
         <button id="practiceStartBtn" class="btn primary" type="button" disabled>Start Practice</button>
@@ -151,13 +151,12 @@
         </div>
 
         <div class="practice-actions">
-          <button id="practiceSuccessBtn" class="btn practice-success" type="button" disabled>✓ Successful Rep</button>
-          <button id="practiceRetryBtn" class="btn practice-retry" type="button" disabled>↺ Retry Section</button>
+          <button id="practiceRetryBtn" class="btn practice-retry" type="button" disabled>↺ Restart Current Speed</button>
           <button id="practiceResetBtn" class="btn ghost" type="button" disabled>Reset Progress</button>
           <button id="practiceStopBtn" class="btn ghost" type="button" disabled>Stop Practice</button>
         </div>
         <div id="practiceStatus" class="mini-status">Open an interactive score first.</div>
-        <div class="note">After you play the section cleanly, tap Successful Rep. The speed increases automatically after the number of reps you set. Retry restarts the section without counting a success.</div>
+        <div class="note">Each completed loop counts as one rep automatically. When the rep count is reached, the speed increases by the step amount. No manual rep button is needed.</div>
       </div>
 
       <div class="section">
@@ -207,7 +206,7 @@
         <div id="emptyState" class="empty">
           <div class="empty-card">
             <h2 id="emptyTitle">DT Music Trainer Pro</h2>
-            <p id="emptyText">Phase 4 adds guided practice sessions on top of the interactive score and synced backing-track player.</p>
+            <p id="emptyText">Phase 4 adds automatic guided practice sessions on top of the interactive score and synced backing-track player.</p>
           </div>
         </div>
         <div id="loading" class="loading">Rendering score…</div>
