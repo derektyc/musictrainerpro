@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="./styles.css" />
   <link rel="stylesheet" href="./practice.css" />
   <link rel="stylesheet" href="./assignments.css" />
+  <link rel="stylesheet" href="./auth.css" />
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.4/dist/alphaTab.min.js"></script>
 </head>
@@ -17,7 +18,7 @@
   <header class="topbar">
     <div class="brand-wrap">
       <div class="brand">DT Music Trainer Pro</div>
-      <div class="sub">Phase 5 · Students & Assignments</div>
+      <div class="sub">Phase 6A · Accounts & Roles</div>
     </div>
     <div id="statusPill" class="status-pill">Starting…</div>
   </header>
@@ -78,7 +79,7 @@
           <div class="assignment-summary-box"><div id="assignmentSummaryDone" class="n">0</div><div class="l">Completed</div></div>
         </div>
         <button id="assignmentLaunchBtn" class="btn primary" type="button">Open Assignment Dashboard</button>
-        <div class="note">Phase 5 tracks each student's assigned bars, speed target, reps, practice time and progress on this device.</div>
+        <div class="note">Assignments are linked to teacher/student roles. Phase 6A accounts are stored locally on this device.</div>
       </div>
 
       <div class="section">
@@ -219,7 +220,7 @@
         <div id="emptyState" class="empty">
           <div class="empty-card">
             <h2 id="emptyTitle">DT Music Trainer Pro</h2>
-            <p id="emptyText">Phase 5 adds students, assignments and automatic progress tracking on top of Practice Mode.</p>
+            <p id="emptyText">Phase 6A adds teacher and student accounts with role-based access on top of the assignment system.</p>
           </div>
         </div>
         <div id="loading" class="loading">Rendering score…</div>
@@ -267,7 +268,7 @@
     <div class="assignment-head">
       <div>
         <div class="assignment-head-title">DT Music Academy · Assignment Dashboard</div>
-        <div class="assignment-head-sub">Local Phase 5 student progress · no account or cloud required yet</div>
+        <div class="assignment-head-sub">Phase 6A roles · teacher manages assignments, students see their own work</div>
       </div>
       <button id="assignmentCloseBtn" class="assignment-close" type="button">×</button>
     </div>
@@ -346,5 +347,6 @@
 <script src="./app.js"></script>
 <script src="./practice.js"></script>
 <script src="./assignments.js"></script>
+<script src="./auth.js"></script>
 </body>
 </html>
