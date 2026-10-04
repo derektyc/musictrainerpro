@@ -2,6 +2,9 @@
   "use strict";
 
   const $ = id => document.getElementById(id);
+  const DB_NAME = "dt-music-trainer-pro";
+  const STORE_NAME = "songs";
+
   const defaults = {
     startBar: 1,
     endBar: 4,
@@ -47,6 +50,8 @@
   let pollTimer = null;
   let lastReady = false;
   let lastBackingMode = false;
+  let backingGuardTimer = null;
+  let practiceBackingRange = null;
 
   function api(){ return window.dtMusicTrainerProAlphaTab || null; }
   function selectedSongId(){ return localStorage.getItem("dtmtp-selected-song") || ""; }
@@ -125,6 +130,9 @@
     completed = false;
     repsAtStep = 0;
     totalSuccessfulReps = 0;
+    practiceBackingRange = null;
+    stopBackingGuard();
+
     let settings = defaults;
     if(currentSongId){
       try{
@@ -132,6 +140,7 @@
         if(stored) settings = stored;
       }catch(e){ console.warn("Practice settings could not be read",e); }
     }
+
     writeForm(settings);
     currentSpeed = currentSettings.startSpeed;
     render();
@@ -146,6 +155,7 @@
   }
 
   function sourceText(){ return isBackingMode() ? "Synced Backing" : "Synth"; }
+
   function setStatus(text,tone){
     if(!el.status) return;
     el.status.textContent = text;
@@ -168,6 +178,7 @@
     const ready = scoreReady();
     const hasSong = !!currentSongId;
     const s = currentSettings;
+
     el.start.disabled = !hasSong || !ready || sessionActive;
     el.success.disabled = !sessionActive || completed;
     el.retry.disabled = !sessionActive || completed;
@@ -201,6 +212,7 @@
   }
 
   function stopMainPlayback(){
+    stopBackingGuard();
     const stop = $("stopBtn");
     if(stop && !stop.disabled) stop.click();
     else {
@@ -245,13 +257,183 @@
     return false;
   }
 
-  function seekBackingToLoopStart(){
-    const stop = $("stopBtn");
-    if(stop && !stop.disabled){
-      stop.click();
-      return true;
+  function readSongRecord(songId){
+    return new Promise((resolve) => {
+      if(!songId || !window.indexedDB){ resolve(null); return; }
+      let request;
+      try{ request = indexedDB.open(DB_NAME); }
+      catch(e){ resolve(null); return; }
+
+      request.onerror = () => resolve(null);
+      request.onsuccess = () => {
+        const database = request.result;
+        try{
+          if(!database.objectStoreNames.contains(STORE_NAME)){
+            database.close();
+            resolve(null);
+            return;
+          }
+          const tx = database.transaction(STORE_NAME,"readonly");
+          const get = tx.objectStore(STORE_NAME).get(songId);
+          get.onsuccess = () => {
+            const value = get.result || null;
+            database.close();
+            resolve(value);
+          };
+          get.onerror = () => {
+            database.close();
+            resolve(null);
+          };
+        }catch(e){
+          try{ database.close(); }catch(_){}
+          resolve(null);
+        }
+      };
+    });
+  }
+
+  function normalizeSyncPoints(points){
+    return (Array.isArray(points) ? points : [])
+      .map(point => ({
+        barIndex: Math.max(0,Number(point.barIndex) || 0),
+        barPosition: Math.max(0,Math.min(1,Number(point.barPosition) || 0)),
+        millisecondOffset: Math.max(0,Number(point.millisecondOffset) || 0)
+      }))
+      .map(point => ({...point, scorePosition: point.barIndex + point.barPosition}))
+      .sort((a,b) => a.scorePosition - b.scorePosition || a.millisecondOffset - b.millisecondOffset);
+  }
+
+  function interpolateAudioTime(points,scorePosition,durationMs,totalBars){
+    const x = Math.max(0,Number(scorePosition) || 0);
+    const duration = Math.max(0,Number(durationMs) || 0);
+    const bars = Math.max(1,Number(totalBars) || 1);
+
+    if(points.length >= 2){
+      if(x <= points[0].scorePosition){
+        const a = points[0], b = points[1];
+        const span = b.scorePosition - a.scorePosition;
+        if(span > 0){
+          const value = a.millisecondOffset + ((x - a.scorePosition) / span) * (b.millisecondOffset - a.millisecondOffset);
+          return clamp(value,0,duration || Math.max(a.millisecondOffset,b.millisecondOffset));
+        }
+        return clamp(a.millisecondOffset,0,duration || a.millisecondOffset);
+      }
+
+      for(let i=0;i<points.length-1;i++){
+        const a = points[i], b = points[i+1];
+        if(x >= a.scorePosition && x <= b.scorePosition){
+          const span = b.scorePosition - a.scorePosition;
+          if(span <= 0) return a.millisecondOffset;
+          const ratio = (x - a.scorePosition) / span;
+          return clamp(a.millisecondOffset + ratio * (b.millisecondOffset - a.millisecondOffset),0,duration || b.millisecondOffset);
+        }
+      }
+
+      const a = points[points.length-2], b = points[points.length-1];
+      const span = b.scorePosition - a.scorePosition;
+      if(span > 0){
+        const value = b.millisecondOffset + ((x - b.scorePosition) / span) * (b.millisecondOffset - a.millisecondOffset);
+        return clamp(value,0,duration || value);
+      }
+      return clamp(b.millisecondOffset,0,duration || b.millisecondOffset);
     }
-    return false;
+
+    return duration * clamp(x / bars,0,1);
+  }
+
+  function waitForAudioMetadata(audio){
+    if(audio && Number.isFinite(audio.duration) && audio.duration > 0) return Promise.resolve();
+    return new Promise((resolve) => {
+      if(!audio){ resolve(); return; }
+      const done = () => {
+        audio.removeEventListener("loadedmetadata",done);
+        audio.removeEventListener("error",done);
+        resolve();
+      };
+      audio.addEventListener("loadedmetadata",done,{once:true});
+      audio.addEventListener("error",done,{once:true});
+      setTimeout(done,1200);
+    });
+  }
+
+  async function calculateBackingPracticeRange(){
+    const audio = $("backingAudio");
+    if(!audio) return null;
+    await waitForAudioMetadata(audio);
+
+    const durationMs = Math.max(0,(Number(audio.duration) || 0) * 1000);
+    const totalBars = barCount();
+    if(!durationMs || !totalBars) return null;
+
+    const song = await readSongRecord(currentSongId);
+    const points = normalizeSyncPoints(song && song.syncPoints);
+
+    const startScorePosition = Math.max(0,currentSettings.startBar - 1);
+    const endScorePosition = currentSettings.endBar >= totalBars ? totalBars : currentSettings.endBar;
+
+    let startMs = interpolateAudioTime(points,startScorePosition,durationMs,totalBars);
+    let endMs = interpolateAudioTime(points,endScorePosition,durationMs,totalBars);
+
+    startMs = clamp(startMs,0,Math.max(0,durationMs - 1));
+    endMs = clamp(endMs,startMs + 1,durationMs);
+
+    return {startMs,endMs,durationMs,totalBars};
+  }
+
+  async function seekBackingToPracticeStart(){
+    const audio = $("backingAudio");
+    if(!audio) return false;
+
+    practiceBackingRange = await calculateBackingPracticeRange();
+    if(!practiceBackingRange) return false;
+
+    audio.pause();
+    audio.currentTime = practiceBackingRange.startMs / 1000;
+
+    try{
+      const a = api();
+      if(a) a.timePosition = practiceBackingRange.startMs;
+    }catch(e){}
+
+    return true;
+  }
+
+  function stopBackingGuard(){
+    if(backingGuardTimer){
+      clearInterval(backingGuardTimer);
+      backingGuardTimer = null;
+    }
+  }
+
+  function startBackingGuard(){
+    stopBackingGuard();
+    const audio = $("backingAudio");
+    if(!audio || !practiceBackingRange) return;
+
+    backingGuardTimer = setInterval(() => {
+      if(!sessionActive || !isBackingMode() || !practiceBackingRange) return;
+
+      const nowMs = (Number(audio.currentTime) || 0) * 1000;
+      const startMs = practiceBackingRange.startMs;
+      const endMs = practiceBackingRange.endMs;
+
+      if(nowMs < startMs - 120){
+        audio.currentTime = startMs / 1000;
+        try{
+          const a = api();
+          if(a) a.timePosition = startMs;
+        }catch(e){}
+        return;
+      }
+
+      if(!audio.paused && nowMs >= endMs - 30){
+        audio.currentTime = startMs / 1000;
+        try{
+          const a = api();
+          if(a) a.timePosition = startMs;
+        }catch(e){}
+      }
+    },40);
   }
 
   function sleep(ms){ return new Promise(resolve => setTimeout(resolve,ms)); }
@@ -279,6 +461,7 @@
     if(!currentSettings.countIn) return true;
     const token = ++countdownToken;
     const beatMs = Math.round(600 * (100 / Math.max(25,currentSpeed)));
+
     if(el.countdown) el.countdown.classList.add("show");
     for(let beat = 1; beat <= 4; beat++){
       if(token !== countdownToken) return false;
@@ -286,6 +469,7 @@
       beep(beat === 1);
       await sleep(beatMs);
     }
+
     if(token === countdownToken && el.countdown) el.countdown.classList.remove("show");
     return token === countdownToken;
   }
@@ -295,6 +479,7 @@
 
     countdownToken++;
     if(el.countdown) el.countdown.classList.remove("show");
+
     stopMainPlayback();
     await sleep(80);
 
@@ -305,21 +490,33 @@
       return false;
     }
 
-    if(isBackingMode()) seekBackingToLoopStart();
-    else seekSynthToStart();
+    let seekOkay = false;
+    if(isBackingMode()) seekOkay = await seekBackingToPracticeStart();
+    else seekOkay = seekSynthToStart();
 
-    await sleep(60);
+    if(!seekOkay){
+      setStatus("Practice Mode could not find the selected bar start. Try reopening the interactive score.");
+      return false;
+    }
+
+    await sleep(80);
+
     if(withCountIn){
       const okay = await countIn();
       if(!okay || !sessionActive) return false;
     }
+
+    if(isBackingMode()) await seekBackingToPracticeStart();
+    else seekSynthToStart();
 
     const play = $("playBtn");
     if(!play || play.disabled){
       setStatus("The main player is not ready yet. Wait for the score to finish loading and try again.");
       return false;
     }
+
     play.click();
+    if(isBackingMode()) startBackingGuard();
     return true;
   }
 
@@ -339,6 +536,7 @@
     const started = await prepareAndPlay(true);
     if(!started && sessionActive){
       sessionActive = false;
+      stopBackingGuard();
       render();
     }
   }
@@ -378,6 +576,7 @@
     countdownToken++;
     if(el.countdown) el.countdown.classList.remove("show");
     stopMainPlayback();
+
     currentSettings = readForm();
     saveSettings();
     currentSpeed = currentSettings.startSpeed;
@@ -385,6 +584,7 @@
     totalSuccessfulReps = 0;
     completed = false;
     sessionActive = false;
+    practiceBackingRange = null;
     render();
   }
 
@@ -393,6 +593,7 @@
     if(el.countdown) el.countdown.classList.remove("show");
     sessionActive = false;
     stopMainPlayback();
+    practiceBackingRange = null;
     render();
   }
 
@@ -400,6 +601,7 @@
     currentSettings = readForm();
     writeForm(currentSettings);
     if(!sessionActive) currentSpeed = currentSettings.startSpeed;
+    practiceBackingRange = null;
     saveSettings();
     render();
   }
@@ -420,7 +622,14 @@
     el.stop.addEventListener("click",stopPractice);
 
     [$("synthModeBtn"),$("backingModeBtn")].filter(Boolean).forEach(button => {
-      button.addEventListener("click",() => setTimeout(render,80));
+      button.addEventListener("click",() => {
+        if(sessionActive){
+          sessionActive = false;
+          stopMainPlayback();
+          practiceBackingRange = null;
+        }
+        setTimeout(render,80);
+      });
     });
     return true;
   }
@@ -466,7 +675,8 @@
       startButtonEnabled: !!(el.start && !el.start.disabled),
       mainLoopControlsAvailable: !!($("loopStart") && $("loopEnd") && $("applyLoop")),
       mainSpeedControlAvailable: !!$("speed"),
-      mainTransportAvailable: !!($("playBtn") && $("stopBtn"))
+      mainTransportAvailable: !!($("playBtn") && $("stopBtn")),
+      backingRange: practiceBackingRange ? {...practiceBackingRange} : null
     };
   }
 
@@ -496,7 +706,8 @@
       repsAtStep,
       totalSuccessfulReps,
       settings: {...currentSettings},
-      source: sourceText()
+      source: sourceText(),
+      backingRange: practiceBackingRange ? {...practiceBackingRange} : null
     })
   };
 
