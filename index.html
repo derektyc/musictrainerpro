@@ -8,6 +8,7 @@
 
   <link rel="stylesheet" href="./styles.css" />
   <link rel="stylesheet" href="./practice.css" />
+  <link rel="stylesheet" href="./assignments.css" />
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.8.4/dist/alphaTab.min.js"></script>
 </head>
@@ -16,7 +17,7 @@
   <header class="topbar">
     <div class="brand-wrap">
       <div class="brand">DT Music Trainer Pro</div>
-      <div class="sub">Phase 4 · Automatic Practice Mode</div>
+      <div class="sub">Phase 5 · Students & Assignments</div>
     </div>
     <div id="statusPill" class="status-pill">Starting…</div>
   </header>
@@ -66,6 +67,18 @@
         <div id="interactiveAsset" class="asset-row"></div>
         <div id="pdfAsset" class="asset-row"></div>
         <div id="audioAsset" class="asset-row"></div>
+      </div>
+
+      <div class="section assignment-launch-card">
+        <div class="section-title">STUDENTS & ASSIGNMENTS</div>
+        <div class="assignment-student-line">Current student: <strong id="assignmentCurrentStudent">No student selected</strong></div>
+        <div class="assignment-summary-grid">
+          <div class="assignment-summary-box"><div id="assignmentSummaryOpen" class="n">0</div><div class="l">Not started</div></div>
+          <div class="assignment-summary-box"><div id="assignmentSummaryProgress" class="n">0</div><div class="l">In progress</div></div>
+          <div class="assignment-summary-box"><div id="assignmentSummaryDone" class="n">0</div><div class="l">Completed</div></div>
+        </div>
+        <button id="assignmentLaunchBtn" class="btn primary" type="button">Open Assignment Dashboard</button>
+        <div class="note">Phase 5 tracks each student's assigned bars, speed target, reps, practice time and progress on this device.</div>
       </div>
 
       <div class="section">
@@ -135,7 +148,7 @@
 
         <label class="practice-check">
           <input id="practiceCountIn" type="checkbox" checked />
-          Count-in before start / each new speed step
+          Count-in before every rep
         </label>
 
         <button id="practiceStartBtn" class="btn primary" type="button" disabled>Start Practice</button>
@@ -156,7 +169,7 @@
           <button id="practiceStopBtn" class="btn ghost" type="button" disabled>Stop Practice</button>
         </div>
         <div id="practiceStatus" class="mini-status">Open an interactive score first.</div>
-        <div class="note">Each completed loop counts as one rep automatically. When the rep count is reached, the speed increases by the step amount. No manual rep button is needed.</div>
+        <div class="note">Each completed loop counts as one rep automatically. A count-in plays before every rep. When the rep count is reached, the speed increases automatically.</div>
       </div>
 
       <div class="section">
@@ -206,7 +219,7 @@
         <div id="emptyState" class="empty">
           <div class="empty-card">
             <h2 id="emptyTitle">DT Music Trainer Pro</h2>
-            <p id="emptyText">Phase 4 adds automatic guided practice sessions on top of the interactive score and synced backing-track player.</p>
+            <p id="emptyText">Phase 5 adds students, assignments and automatic progress tracking on top of Practice Mode.</p>
           </div>
         </div>
         <div id="loading" class="loading">Rendering score…</div>
@@ -249,9 +262,89 @@
   </div>
 </div>
 
+<div id="assignmentModal" class="assignment-modal" aria-hidden="true">
+  <div class="assignment-shell">
+    <div class="assignment-head">
+      <div>
+        <div class="assignment-head-title">DT Music Academy · Assignment Dashboard</div>
+        <div class="assignment-head-sub">Local Phase 5 student progress · no account or cloud required yet</div>
+      </div>
+      <button id="assignmentCloseBtn" class="assignment-close" type="button">×</button>
+    </div>
+
+    <div class="assignment-toolbar">
+      <select id="assignmentStudentSelect"></select>
+      <button id="assignmentAddStudentBtn" class="primary" type="button">+ Student</button>
+      <button id="assignmentRemoveStudentBtn" class="danger" type="button">Remove Student</button>
+      <button id="assignmentUsePracticeBtn" type="button">Copy Current Practice</button>
+    </div>
+
+    <div class="assignment-tabs">
+      <button id="assignmentTeacherTab" class="active" type="button">Teacher Dashboard</button>
+      <button id="assignmentStudentTab" type="button">My Assignments</button>
+    </div>
+
+    <div class="assignment-body">
+      <div id="assignmentTeacherView" class="assignment-view active">
+        <div class="assignment-student-heading">
+          <div>
+            <div id="assignmentTeacherStudentName" class="assignment-student-name">No student</div>
+            <div id="assignmentTeacherStudentMeta" class="assignment-student-meta">Add a student to begin.</div>
+          </div>
+        </div>
+
+        <div class="assignment-dashboard">
+          <div class="assignment-panel">
+            <h3>Create Assignment</h3>
+            <div class="assignment-form">
+              <div>
+                <label for="assignmentSongSelect">SONG</label>
+                <select id="assignmentSongSelect"></select>
+              </div>
+              <div class="assignment-form-grid">
+                <div><label for="assignmentStartBar">START BAR</label><input id="assignmentStartBar" type="number" min="1" value="1"></div>
+                <div><label for="assignmentEndBar">END BAR</label><input id="assignmentEndBar" type="number" min="1" value="4"></div>
+              </div>
+              <div class="assignment-form-grid three">
+                <div><label for="assignmentStartSpeed">START %</label><input id="assignmentStartSpeed" type="number" min="25" max="150" value="60"></div>
+                <div><label for="assignmentTargetSpeed">TARGET %</label><input id="assignmentTargetSpeed" type="number" min="25" max="150" value="100"></div>
+                <div><label for="assignmentStep">STEP %</label><input id="assignmentStep" type="number" min="1" max="25" value="5"></div>
+              </div>
+              <div class="assignment-form-grid">
+                <div><label for="assignmentReps">REPS / SPEED</label><input id="assignmentReps" type="number" min="1" max="20" value="3"></div>
+                <div><label for="assignmentSource">PLAYER</label><select id="assignmentSource"><option value="either">Student choice</option><option value="synth">Synth</option><option value="backing">Synced Backing</option></select></div>
+              </div>
+              <div><label for="assignmentDueDate">DUE DATE</label><input id="assignmentDueDate" type="date"></div>
+              <div><label for="assignmentNote">TEACHER NOTE</label><textarea id="assignmentNote" placeholder="e.g. Keep the chord changes even and clean."></textarea></div>
+              <button id="assignmentCreateBtn" class="primary" type="button">Assign to Student</button>
+            </div>
+          </div>
+
+          <div class="assignment-panel">
+            <h3>Assignments & Progress</h3>
+            <div id="assignmentTeacherList" class="assignment-list"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="assignmentStudentView" class="assignment-view">
+        <div class="assignment-student-heading">
+          <div>
+            <div id="assignmentStudentName" class="assignment-student-name">My Assignments</div>
+            <div id="assignmentStudentMeta" class="assignment-student-meta">No student selected.</div>
+          </div>
+        </div>
+        <div id="assignmentStudentList" class="assignment-list"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div id="practiceCountdown" class="practice-countdown"><div id="practiceCountdownNumber" class="practice-countdown-number">1</div></div>
+<div id="assignmentToast" class="assignment-toast"></div>
 <div id="toast" class="toast"></div>
 <script src="./app.js"></script>
 <script src="./practice.js"></script>
+<script src="./assignments.js"></script>
 </body>
 </html>
