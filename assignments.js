@@ -41,7 +41,9 @@
     studentName: $("assignmentStudentName"),
     studentMeta: $("assignmentStudentMeta"),
     studentList: $("assignmentStudentList"),
-    toast: $("assignmentToast")
+    toast: $("assignmentToast"),
+    practiceCount: null,
+    practicePeriod: null
   };
 
   let data = loadData();
@@ -86,6 +88,32 @@
     saveData();
   }
 
+  function localDateKey(value){
+    const d = value instanceof Date ? value : new Date(value);
+    if(Number.isNaN(d.getTime())) return "";
+    const y = d.getFullYear();
+    const m = String(d.getMonth()+1).padStart(2,"0");
+    const day = String(d.getDate()).padStart(2,"0");
+    return y + "-" + m + "-" + day;
+  }
+
+  function weekKey(value){
+    const d = value instanceof Date ? new Date(value.getTime()) : new Date(value);
+    if(Number.isNaN(d.getTime())) return "";
+    d.setHours(0,0,0,0);
+    const day = (d.getDay()+6)%7;
+    d.setDate(d.getDate()-day);
+    return localDateKey(d);
+  }
+
+  function normalizeRequirement(a){
+    const raw = a && a.requirement ? a.requirement : null;
+    const count = Math.max(1,Math.min(20,Math.round(Number(raw && raw.count) || 1)));
+    const period = raw && ["day","week","total"].includes(raw.period) ? raw.period : "total";
+    a.requirement = {count,period};
+    return a.requirement;
+  }
+
   function assignmentProgress(a){
     if(!a.progress) a.progress = {};
     const p = a.progress;
@@ -98,6 +126,15 @@
     p.lastSessionId = p.lastSessionId || "";
     p.lastSessionElapsedMs = Math.max(0,Number(p.lastSessionElapsedMs) || 0);
     p.lastRepKey = p.lastRepKey || "";
+    if(!Array.isArray(p.sessions)) p.sessions = [];
+
+    if(!a.requirement && p.status === "Completed" && !p.sessions.length){
+      p.sessions.push({
+        id:"legacy-" + a.id,
+        completedAt:p.completedAt || p.lastPractisedAt || a.createdAt || new Date().toISOString()
+      });
+    }
+    normalizeRequirement(a);
     return p;
   }
 
@@ -121,23 +158,106 @@
     if(!value) return "—";
     const d = new Date(value);
     if(Number.isNaN(d.getTime())) return "—";
-    return d.toLocaleDateString(undefined,{day:"numeric",month:"short"}) + " " + d.toLocaleTimeString(undefined,{hour:"2-digit",minute:"2-digit"});
+    return d.toLocaleDateString(undefined,{day:"numeric",month:"short"}) + " " +
+      d.toLocaleTimeString(undefined,{hour:"2-digit",minute:"2-digit"});
+  }
+
+  function countSessionsInPeriod(a,periodKey){
+    const p = assignmentProgress(a);
+    const req = normalizeRequirement(a);
+    if(req.period === "total") return p.sessions.length;
+    return p.sessions.filter(s => {
+      if(req.period === "day") return localDateKey(s.completedAt) === periodKey;
+      return weekKey(s.completedAt) === periodKey;
+    }).length;
+  }
+
+  function requirementStats(a){
+    const p = assignmentProgress(a);
+    const req = normalizeRequirement(a);
+    const now = new Date();
+    let done = 0;
+    let label = "";
+    let periodKey = "";
+
+    if(req.period === "day"){
+      periodKey = localDateKey(now);
+      done = countSessionsInPeriod(a,periodKey);
+      label = "Today";
+    }else if(req.period === "week"){
+      periodKey = weekKey(now);
+      done = countSessionsInPeriod(a,periodKey);
+      label = "This week";
+    }else{
+      done = p.sessions.length;
+      label = "Total";
+    }
+
+    return {
+      count:req.count,
+      period:req.period,
+      done,
+      met:done >= req.count,
+      label,
+      periodKey,
+      text:req.count + "× / " + (req.period === "day" ? "day" : req.period === "week" ? "week" : "assignment")
+    };
+  }
+
+  function requirementHistoryMet(a){
+    const req = normalizeRequirement(a);
+    if(req.period === "total") return requirementStats(a).met;
+    if(!a.dueDate) return false;
+
+    const start = new Date(a.createdAt || Date.now());
+    const due = new Date(a.dueDate + "T23:59:59");
+    if(Number.isNaN(start.getTime()) || Number.isNaN(due.getTime())) return false;
+    if(Date.now() <= due.getTime()) return false;
+
+    if(req.period === "day"){
+      const cursor = new Date(start.getFullYear(),start.getMonth(),start.getDate());
+      const end = new Date(due.getFullYear(),due.getMonth(),due.getDate());
+      while(cursor <= end){
+        if(countSessionsInPeriod(a,localDateKey(cursor)) < req.count) return false;
+        cursor.setDate(cursor.getDate()+1);
+      }
+      return true;
+    }
+
+    const cursor = new Date(start);
+    const day = (cursor.getDay()+6)%7;
+    cursor.setHours(0,0,0,0);
+    cursor.setDate(cursor.getDate()-day);
+    const endKey = weekKey(due);
+    while(weekKey(cursor) <= endKey){
+      if(countSessionsInPeriod(a,weekKey(cursor)) < req.count) return false;
+      cursor.setDate(cursor.getDate()+7);
+    }
+    return true;
   }
 
   function isOverdue(a){
-    const p = assignmentProgress(a);
-    if(!a.dueDate || p.status === "Completed") return false;
-    const today = new Date();
-    today.setHours(0,0,0,0);
+    if(!a.dueDate) return false;
     const due = new Date(a.dueDate + "T23:59:59");
-    return due < today;
+    return Date.now() > due.getTime() && !requirementHistoryMet(a);
+  }
+
+  function assignmentStatus(a){
+    const p = assignmentProgress(a);
+    const req = normalizeRequirement(a);
+
+    if(req.period === "total" && requirementStats(a).met) return "Completed";
+    if((req.period === "day" || req.period === "week") && requirementHistoryMet(a)) return "Completed";
+    if(isOverdue(a)) return "Overdue";
+    if(p.sessions.length || p.repsCompleted || p.practiceMs || p.status === "In Progress" || p.status === "Completed") return "In Progress";
+    return "Not Started";
   }
 
   function statusBadge(a){
-    const p = assignmentProgress(a);
-    if(p.status === "Completed") return {text:"Completed",cls:"complete"};
-    if(isOverdue(a)) return {text:"Overdue",cls:"overdue"};
-    if(p.status === "In Progress") return {text:"In Progress",cls:"progress"};
+    const status = assignmentStatus(a);
+    if(status === "Completed") return {text:"Completed",cls:"complete"};
+    if(status === "Overdue") return {text:"Overdue",cls:"overdue"};
+    if(status === "In Progress") return {text:"In Progress",cls:"progress"};
     return {text:"Not Started",cls:""};
   }
 
@@ -188,6 +308,34 @@
     else if(songs.some(s => s.id === selectedSong)) el.song.value = selectedSong;
   }
 
+  function injectPracticeRequirementControls(){
+    const form = el.create && el.create.closest(".assignment-form");
+    if(!form || $("assignmentPracticeCount")) {
+      el.practiceCount = $("assignmentPracticeCount");
+      el.practicePeriod = $("assignmentPracticePeriod");
+      return;
+    }
+
+    const dueWrap = el.due && el.due.parentElement;
+    if(!dueWrap) return;
+
+    const row = document.createElement("div");
+    row.className = "assignment-form-grid assignment-requirement-form";
+    row.innerHTML =
+      '<div><label for="assignmentPracticeCount">PRACTICE REQUIRED</label>' +
+      '<input id="assignmentPracticeCount" type="number" min="1" max="20" value="1"></div>' +
+      '<div><label for="assignmentPracticePeriod">FREQUENCY</label>' +
+      '<select id="assignmentPracticePeriod">' +
+      '<option value="day">Per day</option>' +
+      '<option value="week">Per week</option>' +
+      '<option value="total">Total sessions</option>' +
+      '</select></div>';
+
+    form.insertBefore(row,dueWrap);
+    el.practiceCount = $("assignmentPracticeCount");
+    el.practicePeriod = $("assignmentPracticePeriod");
+  }
+
   function renderStudentSelect(){
     if(!el.studentSelect) return;
     el.studentSelect.innerHTML = "";
@@ -211,9 +359,9 @@
   function renderLaunchSummary(){
     const student = activeStudent();
     const list = student ? studentAssignments(student.id) : [];
-    const open = list.filter(a => assignmentProgress(a).status === "Not Started").length;
-    const progress = list.filter(a => assignmentProgress(a).status === "In Progress").length;
-    const done = list.filter(a => assignmentProgress(a).status === "Completed").length;
+    const open = list.filter(a => assignmentStatus(a) === "Not Started").length;
+    const progress = list.filter(a => assignmentStatus(a) === "In Progress" || assignmentStatus(a) === "Overdue").length;
+    const done = list.filter(a => assignmentStatus(a) === "Completed").length;
     if(el.currentStudent) el.currentStudent.textContent = student ? student.name : "No student selected";
     if(el.summaryOpen) el.summaryOpen.textContent = String(open);
     if(el.summaryProgress) el.summaryProgress.textContent = String(progress);
@@ -223,18 +371,22 @@
   function renderStudentHeaders(){
     const student = activeStudent();
     const list = student ? studentAssignments(student.id) : [];
-    const completed = list.filter(a => assignmentProgress(a).status === "Completed").length;
+    const completed = list.filter(a => assignmentStatus(a) === "Completed").length;
+    const active = list.filter(a => assignmentStatus(a) !== "Completed").length;
     if(el.teacherStudentName) el.teacherStudentName.textContent = student ? student.name : "No student";
     if(el.teacherStudentMeta) el.teacherStudentMeta.textContent = student ? (list.length + " assignments · " + completed + " completed") : "Add a student to begin.";
     if(el.studentName) el.studentName.textContent = student ? student.name : "My Assignments";
-    if(el.studentMeta) el.studentMeta.textContent = student ? (list.filter(a => assignmentProgress(a).status !== "Completed").length + " active assignments") : "No student selected.";
+    if(el.studentMeta) el.studentMeta.textContent = student ? (active + " active assignments") : "No student selected.";
   }
 
   function buildAssignmentCard(a,studentMode){
     const p = assignmentProgress(a);
+    const reqStats = requirementStats(a);
     const badge = statusBadge(a);
     const card = document.createElement("div");
-    card.className = "assignment-card" + (badge.cls === "overdue" ? " overdue" : "") + (badge.cls === "complete" ? " completed" : "");
+    card.className = "assignment-card" +
+      (badge.cls === "overdue" ? " overdue" : "") +
+      (badge.cls === "complete" ? " completed" : "");
 
     const top = document.createElement("div");
     top.className = "assignment-card-top";
@@ -244,13 +396,29 @@
     title.textContent = a.songTitle || "Untitled Song";
     const sub = document.createElement("div");
     sub.className = "assignment-card-sub";
-    sub.textContent = "Bars " + a.settings.startBar + "–" + a.settings.endBar + " · " + a.settings.startSpeed + "% → " + a.settings.targetSpeed + "% · +" + a.settings.increment + "% every " + a.settings.repsPerStep + " reps" + (a.dueDate ? " · Due " + a.dueDate : "");
+    sub.textContent =
+      "Bars " + a.settings.startBar + "–" + a.settings.endBar +
+      " · " + a.settings.startSpeed + "% → " + a.settings.targetSpeed + "%" +
+      " · +" + a.settings.increment + "% every " + a.settings.repsPerStep + " reps" +
+      (a.dueDate ? " · Due " + a.dueDate : "");
     titleWrap.append(title,sub);
+
     const badgeEl = document.createElement("span");
     badgeEl.className = "assignment-badge " + badge.cls;
     badgeEl.textContent = badge.text;
     top.append(titleWrap,badgeEl);
     card.appendChild(top);
+
+    const goal = document.createElement("div");
+    goal.className = "assignment-frequency" + (reqStats.met ? " met" : "");
+    const goalMain = document.createElement("div");
+    goalMain.className = "assignment-frequency-main";
+    goalMain.textContent = "Practice goal: " + reqStats.text;
+    const goalProgress = document.createElement("div");
+    goalProgress.className = "assignment-frequency-progress";
+    goalProgress.textContent = reqStats.label + " " + reqStats.done + "/" + reqStats.count;
+    goal.append(goalMain,goalProgress);
+    card.appendChild(goal);
 
     if(a.note){
       const note = document.createElement("div");
@@ -282,7 +450,12 @@
     const practice = document.createElement("button");
     practice.type = "button";
     practice.className = "primary";
-    practice.textContent = p.status === "Completed" ? "Practice Again" : "Practice Assignment";
+
+    if(reqStats.period === "day" && reqStats.met) practice.textContent = "Practice Again Today";
+    else if(reqStats.period === "week" && reqStats.met) practice.textContent = "Practice Again This Week";
+    else if(assignmentStatus(a) === "Completed") practice.textContent = "Practice Again";
+    else practice.textContent = "Practice Assignment";
+
     practice.onclick = () => loadAssignmentIntoPractice(a.id);
     actions.appendChild(practice);
 
@@ -292,6 +465,7 @@
       duplicate.textContent = "Duplicate";
       duplicate.onclick = () => duplicateAssignment(a.id);
       actions.appendChild(duplicate);
+
       const del = document.createElement("button");
       del.type = "button";
       del.className = "danger";
@@ -299,6 +473,7 @@
       del.onclick = () => deleteAssignment(a.id);
       actions.appendChild(del);
     }
+
     card.appendChild(actions);
     return card;
   }
@@ -314,12 +489,14 @@
       if(el.studentList) el.studentList.innerHTML = text;
       return;
     }
+
     if(!list.length){
       const text = '<div class="assignment-empty">No assignments yet.</div>';
       if(el.teacherList) el.teacherList.innerHTML = text;
       if(el.studentList) el.studentList.innerHTML = text;
       return;
     }
+
     list.forEach(a => {
       if(el.teacherList) el.teacherList.appendChild(buildAssignmentCard(a,false));
       if(el.studentList) el.studentList.appendChild(buildAssignmentCard(a,true));
@@ -335,11 +512,19 @@
 
   function openModal(){
     if(!el.modal) return;
+    document.body.classList.add("assignment-modal-open");
     el.modal.classList.add("show");
+    el.modal.setAttribute("aria-hidden","false");
     loadSongs();
     renderAll();
   }
-  function closeModal(){ if(el.modal) el.modal.classList.remove("show"); }
+
+  function closeModal(){
+    if(!el.modal) return;
+    el.modal.classList.remove("show");
+    el.modal.setAttribute("aria-hidden","true");
+    document.body.classList.remove("assignment-modal-open");
+  }
 
   function showView(name){
     const teacher = name === "teacher";
@@ -393,14 +578,18 @@
   function createAssignment(){
     const student = activeStudent();
     if(!student){ toast("Add a student first."); return; }
+
     const song = songs.find(s => s.id === el.song.value);
     if(!song){ toast("Choose a song."); return; }
 
     let startBar = Math.max(1,Math.round(Number(el.startBar.value)||1));
     let endBar = Math.max(1,Math.round(Number(el.endBar.value)||startBar));
     if(endBar < startBar) [startBar,endBar] = [endBar,startBar];
-    let startSpeed = Math.max(25,Math.min(150,Math.round(Number(el.startSpeed.value)||60)));
-    let targetSpeed = Math.max(startSpeed,Math.min(150,Math.round(Number(el.targetSpeed.value)||100)));
+
+    const startSpeed = Math.max(25,Math.min(150,Math.round(Number(el.startSpeed.value)||60)));
+    const targetSpeed = Math.max(startSpeed,Math.min(150,Math.round(Number(el.targetSpeed.value)||100)));
+    const requirementCount = Math.max(1,Math.min(20,Math.round(Number(el.practiceCount && el.practiceCount.value)||1)));
+    const requirementPeriod = el.practicePeriod && ["day","week","total"].includes(el.practicePeriod.value) ? el.practicePeriod.value : "day";
 
     const assignment = {
       id:makeId("assignment"),
@@ -411,6 +600,7 @@
       dueDate:el.due.value || "",
       note:(el.note.value || "").trim(),
       source:el.source.value || "either",
+      requirement:{count:requirementCount,period:requirementPeriod},
       settings:{
         startBar,
         endBar,
@@ -420,8 +610,17 @@
         repsPerStep:Math.max(1,Math.min(20,Math.round(Number(el.reps.value)||3))),
         countIn:true
       },
-      progress:{status:"Not Started",highestSpeed:0,repsCompleted:0,practiceMs:0,lastPractisedAt:"",completedAt:""}
+      progress:{
+        status:"Not Started",
+        highestSpeed:0,
+        repsCompleted:0,
+        practiceMs:0,
+        lastPractisedAt:"",
+        completedAt:"",
+        sessions:[]
+      }
     };
+
     data.assignments.push(assignment);
     saveData();
     el.note.value = "";
@@ -434,7 +633,15 @@
     const copy = JSON.parse(JSON.stringify(old));
     copy.id = makeId("assignment");
     copy.createdAt = new Date().toISOString();
-    copy.progress = {status:"Not Started",highestSpeed:0,repsCompleted:0,practiceMs:0,lastPractisedAt:"",completedAt:""};
+    copy.progress = {
+      status:"Not Started",
+      highestSpeed:0,
+      repsCompleted:0,
+      practiceMs:0,
+      lastPractisedAt:"",
+      completedAt:"",
+      sessions:[]
+    };
     data.assignments.push(copy);
     saveData();
   }
@@ -466,6 +673,7 @@
   function loadAssignmentIntoPractice(id){
     const a = data.assignments.find(x => x.id === id);
     if(!a) return;
+
     localStorage.setItem(ACTIVE_ASSIGNMENT_KEY,a.id);
     savePracticeSettingsForSong(a);
     const selected = localStorage.getItem("dtmtp-selected-song") || "";
@@ -480,10 +688,13 @@
     if(window.DTMusicTrainerPractice && typeof window.DTMusicTrainerPractice.setSettings === "function"){
       window.DTMusicTrainerPractice.setSettings(a.settings);
     }
+
     applyAssignmentSource(a);
     closeModal();
 
-    const state = window.DTMusicTrainerPractice && window.DTMusicTrainerPractice.selfTest ? window.DTMusicTrainerPractice.selfTest() : null;
+    const state = window.DTMusicTrainerPractice && window.DTMusicTrainerPractice.selfTest ?
+      window.DTMusicTrainerPractice.selfTest() : null;
+
     if(!state || !state.scoreReady){
       const open = $("openInteractiveBtn");
       if(open && !open.disabled) open.click();
@@ -500,10 +711,14 @@
 
     const student = activeStudent();
     if(!student) return null;
-    a = studentAssignments(student.id).find(x => {
-      const p = assignmentProgress(x);
-      return x.songId === detail.songId && p.status !== "Completed" && x.settings.startBar === detail.settings.startBar && x.settings.endBar === detail.settings.endBar;
-    }) || null;
+
+    a = studentAssignments(student.id).find(x =>
+      x.songId === detail.songId &&
+      assignmentStatus(x) !== "Completed" &&
+      x.settings.startBar === detail.settings.startBar &&
+      x.settings.endBar === detail.settings.endBar
+    ) || null;
+
     if(a) localStorage.setItem(ACTIVE_ASSIGNMENT_KEY,a.id);
     return a;
   }
@@ -521,54 +736,75 @@
     }
   }
 
+  function recordCompletedSession(a,p,detail){
+    const id = detail.sessionId || ("session-" + Date.now());
+    if(p.sessions.some(s => s.id === id)) return false;
+    p.sessions.push({id,completedAt:new Date().toISOString()});
+    return true;
+  }
+
   function onPracticeEvent(type,event){
     const detail = event.detail || {};
     if(!detail.songId || !detail.settings) return;
+
     const a = findTrackedAssignment(detail);
     if(!a) return;
+
     const p = assignmentProgress(a);
     accruePracticeTime(p,detail);
     p.lastPractisedAt = new Date().toISOString();
     p.highestSpeed = Math.max(p.highestSpeed,Number(detail.currentSpeed)||0);
 
     if(type === "start"){
-      if(p.status !== "Completed") p.status = "In Progress";
+      if(assignmentStatus(a) !== "Completed") p.status = "In Progress";
     }else if(type === "rep"){
       const repKey = detail.sessionId + ":" + detail.totalReps;
       if(p.lastRepKey !== repKey){
         p.repsCompleted += 1;
         p.lastRepKey = repKey;
       }
-      if(p.status !== "Completed") p.status = "In Progress";
+      if(assignmentStatus(a) !== "Completed") p.status = "In Progress";
     }else if(type === "complete"){
-      p.status = "Completed";
+      recordCompletedSession(a,p,detail);
       p.completedAt = new Date().toISOString();
       p.highestSpeed = Math.max(p.highestSpeed,a.settings.targetSpeed);
+      p.status = assignmentStatus(a) === "Completed" ? "Completed" : "In Progress";
     }
+
     saveData();
   }
 
   function resumePendingAssignment(){
     const id = localStorage.getItem(PENDING_ASSIGNMENT_KEY) || "";
     if(!id) return;
+
     const a = data.assignments.find(x => x.id === id);
-    if(!a){ localStorage.removeItem(PENDING_ASSIGNMENT_KEY); return; }
+    if(!a){
+      localStorage.removeItem(PENDING_ASSIGNMENT_KEY);
+      return;
+    }
+
     if((localStorage.getItem("dtmtp-selected-song") || "") !== a.songId) return;
 
     savePracticeSettingsForSong(a);
-    if(window.DTMusicTrainerPractice && typeof window.DTMusicTrainerPractice.setSettings === "function") window.DTMusicTrainerPractice.setSettings(a.settings);
+    if(window.DTMusicTrainerPractice && typeof window.DTMusicTrainerPractice.setSettings === "function"){
+      window.DTMusicTrainerPractice.setSettings(a.settings);
+    }
     localStorage.removeItem(PENDING_ASSIGNMENT_KEY);
 
     let tries = 0;
     const timer = setInterval(() => {
       tries++;
-      const test = window.DTMusicTrainerPractice && window.DTMusicTrainerPractice.selfTest ? window.DTMusicTrainerPractice.selfTest() : null;
+      const test = window.DTMusicTrainerPractice && window.DTMusicTrainerPractice.selfTest ?
+        window.DTMusicTrainerPractice.selfTest() : null;
+
       if(test && test.scoreReady){
         applyAssignmentSource(a);
         clearInterval(timer);
         toast("Assignment ready. Press Start Practice.");
         return;
       }
+
       const open = $("openInteractiveBtn");
       if(open && !open.disabled) open.click();
       if(tries >= 20) clearInterval(timer);
@@ -577,6 +813,7 @@
 
   function bind(){
     if(!el.launch || !el.modal) return false;
+
     el.launch.onclick = openModal;
     el.close.onclick = closeModal;
     el.modal.addEventListener("click",e => { if(e.target === el.modal) closeModal(); });
@@ -588,17 +825,25 @@
     el.create.onclick = createAssignment;
     el.usePractice.onclick = useCurrentPractice;
 
+    document.addEventListener("keydown",e => {
+      if(e.key === "Escape" && el.modal.classList.contains("show")) closeModal();
+    });
+
     window.addEventListener("dtmtp:practice-start",e => onPracticeEvent("start",e));
     window.addEventListener("dtmtp:practice-rep",e => onPracticeEvent("rep",e));
     window.addEventListener("dtmtp:practice-speed-change",e => onPracticeEvent("speed",e));
     window.addEventListener("dtmtp:practice-stop",e => onPracticeEvent("stop",e));
     window.addEventListener("dtmtp:practice-complete",e => onPracticeEvent("complete",e));
+
     return true;
   }
 
   function init(){
+    injectPracticeRequirementControls();
     if(!bind()) return;
-    if(data.students.length && !data.students.some(s => s.id === data.activeStudentId)) data.activeStudentId = data.students[0].id;
+    if(data.students.length && !data.students.some(s => s.id === data.activeStudentId)){
+      data.activeStudentId = data.students[0].id;
+    }
     renderAll();
     loadSongs();
     showView("teacher");
