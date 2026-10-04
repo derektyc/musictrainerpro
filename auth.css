@@ -1,0 +1,75 @@
+.auth-topbar-wrap{display:flex;align-items:center;gap:8px}
+.auth-account-btn{border:1px solid #555;background:#303030;color:#fff;border-radius:10px;padding:8px 10px;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap}
+.auth-account-btn:hover{border-color:#777}
+
+.auth-gate{position:fixed;inset:0;z-index:2147483646;background:rgba(10,10,10,.96);display:none;align-items:center;justify-content:center;padding:20px}
+.auth-gate.show{display:flex}
+.auth-card{width:min(430px,94vw);background:#222;color:#fff;border:1px solid #555;border-radius:18px;padding:22px;box-shadow:0 28px 90px rgba(0,0,0,.65)}
+.auth-brand{font-size:22px;font-weight:900}
+.auth-kicker{font-size:11px;color:var(--accent2);margin-top:3px;margin-bottom:20px}
+.auth-view h2{margin:0 0 6px;font-size:18px}
+.auth-view p,.auth-teacher-tools p{margin:0 0 14px;color:#aaa;font-size:11px;line-height:1.45}
+.auth-view label,.auth-panel-body label{display:block;font-size:9px;font-weight:850;color:#aaa;letter-spacing:.05em;margin-top:9px}
+.auth-view input,.auth-panel-body input,.auth-panel-body select{display:block;width:100%;box-sizing:border-box;margin-top:5px;background:#171717;color:#fff;border:1px solid #4c4c4c;border-radius:9px;padding:10px;outline:none}
+.auth-view input:focus,.auth-panel-body input:focus,.auth-panel-body select:focus{border-color:var(--accent)}
+.auth-primary,.auth-danger,.auth-row-actions button{border:1px solid #555;border-radius:9px;padding:9px 11px;font-weight:800;cursor:pointer}
+.auth-primary{width:100%;margin-top:14px;background:var(--accent);color:#181818;border-color:transparent}
+.auth-danger{width:100%;margin-top:14px;background:#442929;color:#ffc5c5;border-color:#714444}
+.auth-message{min-height:18px;margin-top:10px;font-size:11px;color:#b8eec5}
+.auth-message.error{color:#ffb0b0}
+.auth-local-note{font-size:9px;color:#888;line-height:1.45;margin-top:13px}
+
+.auth-modal{position:fixed;inset:0;z-index:2147483645;background:rgba(0,0,0,.76);display:none;align-items:center;justify-content:center;padding:18px}
+.auth-modal.show{display:flex}
+.auth-panel-shell{width:min(720px,96vw);max-height:92vh;background:#222;border:1px solid #555;border-radius:17px;color:#fff;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 24px 70px rgba(0,0,0,.55)}
+.auth-panel-head{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:14px 16px;background:#292929;border-bottom:1px solid #444}
+.auth-panel-title{font-size:17px;font-weight:900}
+.auth-panel-sub{font-size:10px;color:#aaa;margin-top:2px}
+.auth-close{width:38px;height:38px;border-radius:10px;border:1px solid #555;background:#333;color:#fff;font-size:18px;cursor:pointer}
+.auth-panel-body{padding:16px;overflow:auto}
+.auth-current-card{background:#292929;border:1px solid #444;border-radius:12px;padding:12px;margin-bottom:14px}
+.auth-current-name{font-size:16px;font-weight:900}
+.auth-current-meta{font-size:10px;color:#aaa;margin-top:3px}
+.auth-teacher-tools{border-top:1px solid #3f3f3f;padding-top:14px;margin-top:4px}
+.auth-teacher-tools h3{font-size:13px;color:var(--accent2);margin:0 0 5px}
+.auth-grid{display:grid;gap:8px}.auth-grid.two{grid-template-columns:1fr 1fr}
+.auth-account-list{display:flex;flex-direction:column;gap:7px;margin-top:12px}
+.auth-account-row{display:flex;justify-content:space-between;gap:10px;align-items:center;border:1px solid #444;background:#292929;border-radius:10px;padding:9px}
+.auth-account-row strong{display:block;font-size:12px}
+.auth-account-row span{display:block;font-size:9px;color:#999;margin-top:2px}
+.auth-row-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.auth-row-actions button{background:#353535;color:#fff;font-size:9px;padding:6px 8px}
+.auth-row-actions button.danger{background:#442929;color:#ffc5c5;border-color:#714444}
+.auth-empty{padding:12px;border:1px dashed #555;border-radius:9px;color:#999;font-size:10px;text-align:center}
+.auth-toast{position:fixed;z-index:2147483647;left:50%;bottom:24px;transform:translateX(-50%);background:#171717;color:#fff;border:1px solid #555;border-radius:10px;padding:9px 12px;font-size:11px;display:none;box-shadow:0 10px 30px rgba(0,0,0,.4)}
+.auth-toast.show{display:block}
+
+body.role-student #addFilesBtn,
+body.role-student #newSongBtn,
+body.role-student #saveLibraryBtn,
+body.role-student #loadLibraryBtn,
+body.role-student #libraryDropzone,
+body.role-student #renameSongBtn,
+body.role-student #deleteSongBtn,
+body.role-student #attachSelectedBtn,
+body.role-student #assignmentTeacherTab,
+body.role-student #assignmentTeacherView,
+body.role-student #assignmentAddStudentBtn,
+body.role-student #assignmentRemoveStudentBtn,
+body.role-student #assignmentUsePracticeBtn,
+body.role-student #assignmentStudentSelect,
+body.role-student #autoSyncBtn,
+body.role-student #markSyncBtn,
+body.role-student #clearSyncBtn{display:none!important}
+body.role-student .assignment-toolbar{display:none!important}
+body.role-student #assignmentStudentTab{display:inline-flex!important}
+body.role-student #assignmentStudentView{display:block!important}
+body.role-student .assignment-head-sub{font-size:0}
+body.role-student .assignment-head-sub::after{content:"Student account · My Assignments";font-size:10px;color:#aaa}
+
+@media(max-width:600px){
+  .auth-topbar-wrap{gap:5px}.auth-account-btn{max-width:150px;overflow:hidden;text-overflow:ellipsis}
+  .auth-grid.two{grid-template-columns:1fr}
+  .auth-modal{padding:0}.auth-panel-shell{width:100vw;max-height:100vh;height:100vh;border-radius:0;border:0}
+  .auth-account-row{align-items:flex-start;flex-direction:column}.auth-row-actions{justify-content:flex-start}
+}
