@@ -81,6 +81,21 @@
     lastLocalFingerprint = "";
     queuedRemote = null;
     syncing = false;
+    applyingRemote = false;
+  }
+
+  function writeRemoteToLocal(next,label){
+    applyingRemote = true;
+    try{
+      localStorage.setItem(STORAGE_KEY,JSON.stringify(next));
+      lastLocalFingerprint = fingerprint(next);
+      window.dispatchEvent(new CustomEvent("dtmtp:cloud-data-applied",{
+        detail:{role:session ? session.role : "",studentId:session ? session.studentId : ""}
+      }));
+    }finally{
+      applyingRemote = false;
+    }
+    emitStatus("synced",label || "Cloud synced");
   }
 
   function scheduleRemoteApply(delay=220){
@@ -97,6 +112,7 @@
 
   function applyRemoteData(){
     if(!session || !studentsReady || !assignmentsReady) return;
+
     const local = readLocal();
     let students = remoteStudents.map(cleanDoc);
     let assignments = remoteAssignments.map(cleanDoc);
@@ -108,7 +124,9 @@
 
     const activeStudentId = session.role === "student"
       ? session.studentId
-      : (students.some(s => s.id === local.activeStudentId) ? local.activeStudentId : (students[0] ? students[0].id : ""));
+      : (students.some(s => s.id === local.activeStudentId)
+          ? local.activeStudentId
+          : (students[0] ? students[0].id : ""));
 
     const next = {version:1,activeStudentId,students,assignments};
     const remotePrint = fingerprint(next);
@@ -126,28 +144,14 @@
       return;
     }
 
-    applyingRemote = true;
-    try{
-      localStorage.setItem(STORAGE_KEY,JSON.stringify(next));
-      lastLocalFingerprint = remotePrint;
-      sessionStorage.setItem("dtmtp-cloud-reload","1");
-      window.dispatchEvent(new CustomEvent("dtmtp:cloud-data-applied",{detail:{role:session.role}}));
-    }finally{
-      applyingRemote = false;
-    }
-
-    emitStatus("synced","Cloud update received");
-    setTimeout(() => location.reload(),120);
+    writeRemoteToLocal(next,"Cloud update received");
   }
 
   function maybeApplyQueued(){
     if(!queuedRemote || practiceRunning()) return;
     const next = queuedRemote;
     queuedRemote = null;
-    localStorage.setItem(STORAGE_KEY,JSON.stringify(next));
-    lastLocalFingerprint = fingerprint(next);
-    sessionStorage.setItem("dtmtp-cloud-reload","1");
-    setTimeout(() => location.reload(),120);
+    writeRemoteToLocal(next,"Cloud update received");
   }
 
   async function teacherUploadAll(local){
@@ -159,7 +163,10 @@
     try{
       const studentsCol = F.collection(F.db,"academies",session.academyId,"students");
       const assignmentsCol = F.collection(F.db,"academies",session.academyId,"assignments");
-      const [studentSnap,assignmentSnap] = await Promise.all([F.getDocs(studentsCol),F.getDocs(assignmentsCol)]);
+      const [studentSnap,assignmentSnap] = await Promise.all([
+        F.getDocs(studentsCol),
+        F.getDocs(assignmentsCol)
+      ]);
       const existingStudents = new Set(studentSnap.docs.map(d=>d.id));
       const existingAssignments = new Set(assignmentSnap.docs.map(d=>d.id));
       const batch = F.writeBatch(F.db);
@@ -201,6 +208,7 @@
     if(!F || !session || syncing) return;
     syncing = true;
     emitStatus("syncing","Saving practice progress…");
+
     try{
       const mine = (local.assignments || []).filter(a => a.studentId === session.studentId);
       await Promise.all(mine.map(a => F.updateDoc(
@@ -247,7 +255,10 @@
     const assignmentsCol = F.collection(F.db,"academies",session.academyId,"assignments");
 
     try{
-      const [studentSnap,assignmentSnap] = await Promise.all([F.getDocs(studentsCol),F.getDocs(assignmentsCol)]);
+      const [studentSnap,assignmentSnap] = await Promise.all([
+        F.getDocs(studentsCol),
+        F.getDocs(assignmentsCol)
+      ]);
       const cloudEmpty = studentSnap.empty && assignmentSnap.empty;
       const local = readLocal();
       const localHasData = (local.students || []).length || (local.assignments || []).length;
@@ -320,7 +331,9 @@
   window.addEventListener("dtmtp:auth-changed",event => begin(event.detail || null));
   window.addEventListener("dtmtp:firebase-ready",() => {
     try{
-      const s = window.DTMusicTrainerAuth && window.DTMusicTrainerAuth.getSession ? window.DTMusicTrainerAuth.getSession() : null;
+      const s = window.DTMusicTrainerAuth && window.DTMusicTrainerAuth.getSession
+        ? window.DTMusicTrainerAuth.getSession()
+        : null;
       if(s) begin(s);
     }catch(error){}
   });
