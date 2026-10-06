@@ -2,6 +2,7 @@
   "use strict";
 
   const STORAGE_KEY = "dtmtp-phase5-assignments-v1";
+  const STUDENT_RENDER_KEY = "dtmtp-cloud-student-render-v2";
   let session = null;
   let unsubscribers = [];
   let pollTimer = null;
@@ -84,11 +85,20 @@
     applyingRemote = false;
   }
 
+  function scheduleStudentRenderReload(print){
+    if(!session || session.role !== "student") return;
+    const previous = sessionStorage.getItem(STUDENT_RENDER_KEY) || "";
+    if(previous === print) return;
+    sessionStorage.setItem(STUDENT_RENDER_KEY,print);
+    setTimeout(() => location.reload(),90);
+  }
+
   function writeRemoteToLocal(next,label){
+    const nextPrint = fingerprint(next);
     applyingRemote = true;
     try{
       localStorage.setItem(STORAGE_KEY,JSON.stringify(next));
-      lastLocalFingerprint = fingerprint(next);
+      lastLocalFingerprint = nextPrint;
       window.dispatchEvent(new CustomEvent("dtmtp:cloud-data-applied",{
         detail:{role:session ? session.role : "",studentId:session ? session.studentId : ""}
       }));
@@ -96,14 +106,15 @@
       applyingRemote = false;
     }
     emitStatus("synced",label || "Cloud synced");
+    scheduleStudentRenderReload(nextPrint);
   }
 
-  function scheduleRemoteApply(delay=220){
+  function scheduleRemoteApply(delay=180){
     if(remoteApplyTimer) clearTimeout(remoteApplyTimer);
     remoteApplyTimer = setTimeout(() => {
       remoteApplyTimer = null;
       if(syncing){
-        scheduleRemoteApply(180);
+        scheduleRemoteApply(140);
         return;
       }
       applyRemoteData();
@@ -135,6 +146,14 @@
     if(remotePrint === localPrint){
       lastLocalFingerprint = localPrint;
       emitStatus("synced","Cloud synced");
+      return;
+    }
+
+    // A teacher's local edit is the source of truth until it has been uploaded.
+    // Do not let an older Firestore snapshot overwrite a newly-created assignment.
+    if(session.role === "teacher" && lastLocalFingerprint && localPrint !== lastLocalFingerprint){
+      emitStatus("syncing","Saving assignment changes…");
+      scheduleLocalUpload();
       return;
     }
 
@@ -199,7 +218,7 @@
       emitStatus("error","Cloud sync failed");
     }finally{
       syncing = false;
-      scheduleRemoteApply(180);
+      scheduleRemoteApply(140);
     }
   }
 
@@ -222,7 +241,7 @@
       emitStatus("error","Progress sync failed");
     }finally{
       syncing = false;
-      scheduleRemoteApply(180);
+      scheduleRemoteApply(140);
     }
   }
 
@@ -235,7 +254,7 @@
       if(print === lastLocalFingerprint) return;
       if(session.role === "teacher") await teacherUploadAll(local);
       else await studentUploadProgress(local);
-    },300);
+    },100);
   }
 
   function startPolling(){
@@ -245,7 +264,7 @@
       maybeApplyQueued();
       const print = fingerprint(readLocal());
       if(print !== lastLocalFingerprint) scheduleLocalUpload();
-    },650);
+    },250);
   }
 
   async function bootstrapTeacher(){
