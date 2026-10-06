@@ -6,6 +6,7 @@
   let unsubscribers = [];
   let pollTimer = null;
   let syncTimer = null;
+  let remoteApplyTimer = null;
   let remoteStudents = [];
   let remoteAssignments = [];
   let studentsReady = false;
@@ -71,6 +72,7 @@
     unsubscribers = [];
     if(pollTimer){ clearInterval(pollTimer); pollTimer = null; }
     if(syncTimer){ clearTimeout(syncTimer); syncTimer = null; }
+    if(remoteApplyTimer){ clearTimeout(remoteApplyTimer); remoteApplyTimer = null; }
     session = null;
     remoteStudents = [];
     remoteAssignments = [];
@@ -79,6 +81,18 @@
     lastLocalFingerprint = "";
     queuedRemote = null;
     syncing = false;
+  }
+
+  function scheduleRemoteApply(delay=220){
+    if(remoteApplyTimer) clearTimeout(remoteApplyTimer);
+    remoteApplyTimer = setTimeout(() => {
+      remoteApplyTimer = null;
+      if(syncing){
+        scheduleRemoteApply(180);
+        return;
+      }
+      applyRemoteData();
+    },delay);
   }
 
   function applyRemoteData(){
@@ -99,9 +113,9 @@
     const next = {version:1,activeStudentId,students,assignments};
     const remotePrint = fingerprint(next);
     const localPrint = fingerprint(local);
-    lastLocalFingerprint = remotePrint;
 
     if(remotePrint === localPrint){
+      lastLocalFingerprint = localPrint;
       emitStatus("synced","Cloud synced");
       return;
     }
@@ -115,6 +129,7 @@
     applyingRemote = true;
     try{
       localStorage.setItem(STORAGE_KEY,JSON.stringify(next));
+      lastLocalFingerprint = remotePrint;
       sessionStorage.setItem("dtmtp-cloud-reload","1");
       window.dispatchEvent(new CustomEvent("dtmtp:cloud-data-applied",{detail:{role:session.role}}));
     }finally{
@@ -130,6 +145,7 @@
     const next = queuedRemote;
     queuedRemote = null;
     localStorage.setItem(STORAGE_KEY,JSON.stringify(next));
+    lastLocalFingerprint = fingerprint(next);
     sessionStorage.setItem("dtmtp-cloud-reload","1");
     setTimeout(() => location.reload(),120);
   }
@@ -176,6 +192,7 @@
       emitStatus("error","Cloud sync failed");
     }finally{
       syncing = false;
+      scheduleRemoteApply(180);
     }
   }
 
@@ -197,6 +214,7 @@
       emitStatus("error","Progress sync failed");
     }finally{
       syncing = false;
+      scheduleRemoteApply(180);
     }
   }
 
@@ -245,7 +263,7 @@
     unsubscribers.push(F.onSnapshot(studentsCol,snap => {
       remoteStudents = snap.docs.map(d => ({id:d.id,...d.data()}));
       studentsReady = true;
-      applyRemoteData();
+      scheduleRemoteApply();
     },error => {
       console.error("Students listener failed",error);
       emitStatus("error","Student sync unavailable");
@@ -254,7 +272,7 @@
     unsubscribers.push(F.onSnapshot(assignmentsCol,snap => {
       remoteAssignments = snap.docs.map(d => ({id:d.id,...d.data()}));
       assignmentsReady = true;
-      applyRemoteData();
+      scheduleRemoteApply();
     },error => {
       console.error("Assignments listener failed",error);
       emitStatus("error","Assignment sync unavailable");
@@ -273,7 +291,7 @@
     unsubscribers.push(F.onSnapshot(studentRef,snap => {
       remoteStudents = snap.exists() ? [{id:snap.id,...snap.data()}] : [];
       studentsReady = true;
-      applyRemoteData();
+      scheduleRemoteApply();
     },error => {
       console.error("Student profile listener failed",error);
       emitStatus("error","Student profile unavailable");
@@ -282,7 +300,7 @@
     unsubscribers.push(F.onSnapshot(mineQuery,snap => {
       remoteAssignments = snap.docs.map(d => ({id:d.id,...d.data()}));
       assignmentsReady = true;
-      applyRemoteData();
+      scheduleRemoteApply();
     },error => {
       console.error("Student assignment listener failed",error);
       emitStatus("error","Assignments unavailable");
