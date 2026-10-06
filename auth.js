@@ -2,50 +2,44 @@
   "use strict";
 
   const $ = id => document.getElementById(id);
-  const ACCOUNTS_KEY = "dtmtp-auth-accounts-v1";
-  const SESSION_KEY = "dtmtp-auth-session-v1";
-
-  let accounts = loadAccounts();
+  const LEGACY_ACCOUNTS_KEY = "dtmtp-auth-accounts-v1";
   let currentAccount = null;
+  let studentAccounts = [];
+  let firebaseConnected = false;
+  let authUnsubscribe = null;
   let toastTimer = null;
+  let creatingTeacher = false;
 
-  function makeId(prefix){
-    if(window.crypto && typeof crypto.randomUUID === "function") return prefix + "-" + crypto.randomUUID();
-    return prefix + "-" + Date.now() + "-" + Math.random().toString(36).slice(2,9);
-  }
+  function fb(){ return window.DTMTPFirebase || null; }
 
-  function loadAccounts(){
+  function legacyTeacherName(){
     try{
-      const value = JSON.parse(localStorage.getItem(ACCOUNTS_KEY) || "[]");
-      return Array.isArray(value) ? value : [];
-    }catch(e){
-      console.warn("Account data could not be read",e);
-      return [];
-    }
+      const rows = JSON.parse(localStorage.getItem(LEGACY_ACCOUNTS_KEY) || "[]");
+      const teacher = Array.isArray(rows) ? rows.find(a => a.role === "teacher") : null;
+      return teacher && teacher.displayName ? teacher.displayName : "";
+    }catch(error){ return ""; }
   }
 
-  function saveAccounts(){
-    localStorage.setItem(ACCOUNTS_KEY,JSON.stringify(accounts));
-  }
-
-  function normalizedLogin(value){
-    return String(value || "").trim().toLowerCase();
-  }
-
-  function randomSalt(){
-    const bytes = new Uint8Array(16);
-    crypto.getRandomValues(bytes);
-    return Array.from(bytes,b => b.toString(16).padStart(2,"0")).join("");
-  }
-
-  async function passwordHash(login,password,salt){
-    const input = new TextEncoder().encode(String(salt) + "|" + normalizedLogin(login) + "|" + String(password));
-    const digest = await crypto.subtle.digest("SHA-256",input);
-    return Array.from(new Uint8Array(digest),b => b.toString(16).padStart(2,"0")).join("");
+  function injectStyle(){
+    if($("authCloudInlineStyle")) return;
+    const style = document.createElement("style");
+    style.id = "authCloudInlineStyle";
+    style.textContent = `
+      .auth-switch{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:16px}
+      .auth-switch button{border:1px solid #4b4b4b;background:#2c2c2c;color:#ddd;border-radius:9px;padding:8px;font-weight:800;cursor:pointer}
+      .auth-switch button.active{background:var(--accent);color:#181818;border-color:transparent}
+      .auth-cloud-status{display:flex;align-items:center;gap:7px;margin:10px 0 2px;padding:8px 9px;border:1px solid #444;border-radius:9px;background:#292929;font-size:10px;color:#bbb}
+      .auth-cloud-dot{width:8px;height:8px;border-radius:50%;background:#777;flex:0 0 auto}
+      .auth-cloud-status.synced .auth-cloud-dot{background:#7bd995}.auth-cloud-status.syncing .auth-cloud-dot{background:#f2b66a}
+      .auth-cloud-status.error .auth-cloud-dot{background:#ff7777}.auth-cloud-status.pending .auth-cloud-dot{background:#e5c76c}
+      .auth-account-disabled{opacity:.55}.auth-account-row em{font-style:normal;color:#ffadad;font-size:9px}
+    `;
+    document.head.appendChild(style);
   }
 
   function injectUi(){
     if($("authGate")) return;
+    injectStyle();
 
     const topbar = document.querySelector(".topbar");
     const status = $("statusPill");
@@ -56,11 +50,10 @@
       accountBtn.id = "authAccountBtn";
       accountBtn.className = "auth-account-btn";
       accountBtn.type = "button";
-      accountBtn.textContent = "Account";
+      accountBtn.textContent = "Cloud Account";
       if(status && status.parentElement === topbar){
         topbar.insertBefore(wrap,status);
-        wrap.appendChild(status);
-        wrap.appendChild(accountBtn);
+        wrap.append(status,accountBtn);
       }else{
         wrap.appendChild(accountBtn);
         topbar.appendChild(wrap);
@@ -73,27 +66,32 @@
     gate.innerHTML = `
       <div class="auth-card">
         <div class="auth-brand">DT Music Trainer Pro</div>
-        <div class="auth-kicker">Phase 6A · Accounts & Roles</div>
-
-        <div id="authSetupView" class="auth-view">
-          <h2>Create Teacher Account</h2>
-          <p>This first account controls students and assignments on this device.</p>
-          <label>YOUR NAME<input id="authSetupName" type="text" autocomplete="name" placeholder="Teacher name"></label>
-          <label>LOGIN ID<input id="authSetupLogin" type="text" autocomplete="username" placeholder="e.g. derek"></label>
-          <label>PASSWORD<input id="authSetupPassword" type="password" autocomplete="new-password" placeholder="Minimum 6 characters"></label>
-          <button id="authSetupBtn" class="auth-primary" type="button">Create Teacher Account</button>
+        <div class="auth-kicker">Phase 6B · Firebase Cloud Sync</div>
+        <div class="auth-switch">
+          <button id="authShowLogin" class="active" type="button">Sign In</button>
+          <button id="authShowSetup" type="button">Teacher Setup</button>
         </div>
 
         <div id="authLoginView" class="auth-view">
           <h2>Sign In</h2>
-          <p>Use your teacher or student login.</p>
-          <label>LOGIN ID<input id="authLoginId" type="text" autocomplete="username" placeholder="Login ID"></label>
+          <p>Use your DT Music Trainer teacher or student cloud account.</p>
+          <label>EMAIL<input id="authLoginEmail" type="email" autocomplete="username" placeholder="name@example.com"></label>
           <label>PASSWORD<input id="authLoginPassword" type="password" autocomplete="current-password" placeholder="Password"></label>
           <button id="authLoginBtn" class="auth-primary" type="button">Sign In</button>
         </div>
 
-        <div id="authGateMessage" class="auth-message"></div>
-        <div class="auth-local-note">Local account mode for Phase 6A. Cloud authentication and cross-device sync come in Phase 6B.</div>
+        <div id="authSetupView" class="auth-view" style="display:none">
+          <h2>Create Cloud Teacher Account</h2>
+          <p>Your current local students and assignments will be migrated to this Firebase account automatically.</p>
+          <label>YOUR NAME<input id="authSetupName" type="text" autocomplete="name" placeholder="Teacher name"></label>
+          <label>EMAIL<input id="authSetupEmail" type="email" autocomplete="email" placeholder="name@example.com"></label>
+          <label>PASSWORD<input id="authSetupPassword" type="password" autocomplete="new-password" placeholder="Minimum 6 characters"></label>
+          <label>ACADEMY NAME<input id="authAcademyName" type="text" value="DT Music Academy"></label>
+          <button id="authSetupBtn" class="auth-primary" type="button">Create Cloud Teacher Account</button>
+        </div>
+
+        <div id="authGateMessage" class="auth-message">Connecting to Firebase…</div>
+        <div class="auth-local-note">Phase 6A local passwords are not uploaded. Student cloud logins are recreated by the teacher in this phase.</div>
       </div>`;
     document.body.appendChild(gate);
 
@@ -103,29 +101,27 @@
     panel.innerHTML = `
       <div class="auth-panel-shell">
         <div class="auth-panel-head">
-          <div>
-            <div class="auth-panel-title">Account</div>
-            <div id="authPanelSubtitle" class="auth-panel-sub"></div>
-          </div>
+          <div><div class="auth-panel-title">Cloud Account</div><div id="authPanelSubtitle" class="auth-panel-sub"></div></div>
           <button id="authPanelClose" class="auth-close" type="button">×</button>
         </div>
         <div class="auth-panel-body">
           <div id="authCurrentCard" class="auth-current-card"></div>
+          <div id="authCloudStatus" class="auth-cloud-status"><span class="auth-cloud-dot"></span><span>Connecting…</span></div>
 
           <div id="authTeacherTools" class="auth-teacher-tools">
-            <h3>Student Logins</h3>
-            <p>Create a login and link it to an existing Phase 5 student profile.</p>
+            <h3>Student Cloud Logins</h3>
+            <p>Create a Firebase login and link it to an existing student profile.</p>
             <div class="auth-grid two">
               <label>STUDENT PROFILE<select id="authStudentProfile"></select></label>
-              <label>LOGIN ID<input id="authStudentLogin" type="text" placeholder="e.g. bailey"></label>
+              <label>EMAIL<input id="authStudentEmail" type="email" placeholder="student@example.com"></label>
             </div>
-            <label>PASSWORD<input id="authStudentPassword" type="password" placeholder="Minimum 6 characters"></label>
-            <button id="authCreateStudentBtn" class="auth-primary" type="button">Create Student Login</button>
+            <label>TEMPORARY PASSWORD<input id="authStudentPassword" type="password" placeholder="Minimum 6 characters"></label>
+            <button id="authCreateStudentBtn" class="auth-primary" type="button">Create Student Cloud Login</button>
             <div id="authStudentAccountList" class="auth-account-list"></div>
           </div>
 
           <button id="authLogoutBtn" class="auth-danger" type="button">Log Out</button>
-          <div class="auth-local-note">Accounts created in 6A are stored only in this browser. Phase 6B will move authentication and data to the cloud.</div>
+          <div class="auth-local-note">Accounts and assignment progress now use Firebase. Song files are still stored locally in this build.</div>
         </div>
       </div>`;
     document.body.appendChild(panel);
@@ -134,6 +130,25 @@
     toast.id = "authToast";
     toast.className = "auth-toast";
     document.body.appendChild(toast);
+
+    const legacyName = legacyTeacherName();
+    if(legacyName) $("authSetupName").value = legacyName;
+  }
+
+  function loadCloudScripts(){
+    if(!document.querySelector('script[data-dtmtp-firebase]')){
+      const module = document.createElement("script");
+      module.type = "module";
+      module.src = "./firebase-cloud.js";
+      module.dataset.dtmpFirebase = "1";
+      document.head.appendChild(module);
+    }
+    if(!document.querySelector('script[data-dtmtp-cloud-sync]')){
+      const script = document.createElement("script");
+      script.src = "./cloud-sync.js";
+      script.dataset.dtmpCloudSync = "1";
+      document.head.appendChild(script);
+    }
   }
 
   function toast(message){
@@ -142,7 +157,7 @@
     clearTimeout(toastTimer);
     node.textContent = message;
     node.classList.add("show");
-    toastTimer = setTimeout(() => node.classList.remove("show"),2600);
+    toastTimer = setTimeout(() => node.classList.remove("show"),2800);
   }
 
   function setGateMessage(text,error){
@@ -152,28 +167,32 @@
     node.classList.toggle("error",!!error);
   }
 
-  function showCorrectGate(){
-    const hasTeacher = accounts.some(a => a.role === "teacher");
-    const setup = $("authSetupView");
-    const login = $("authLoginView");
-    if(setup) setup.style.display = hasTeacher ? "none" : "block";
-    if(login) login.style.display = hasTeacher ? "block" : "none";
-    setGateMessage("");
+  function showView(name){
+    const login = name !== "setup";
+    $("authLoginView").style.display = login ? "block" : "none";
+    $("authSetupView").style.display = login ? "none" : "block";
+    $("authShowLogin").classList.toggle("active",login);
+    $("authShowSetup").classList.toggle("active",!login);
+    setGateMessage(firebaseConnected ? "" : "Connecting to Firebase…",false);
   }
+
+  function showGate(view){
+    if(view) showView(view);
+    $("authGate").classList.add("show");
+    document.body.classList.add("auth-signed-out");
+  }
+
+  function hideGate(){ $("authGate").classList.remove("show"); }
 
   function assignmentData(){
     try{
-      if(window.DTMusicTrainerAssignments && typeof window.DTMusicTrainerAssignments.getData === "function"){
-        return window.DTMusicTrainerAssignments.getData();
-      }
-    }catch(e){}
-    return {students:[],assignments:[]};
+      return window.DTMusicTrainerAssignments && window.DTMusicTrainerAssignments.getData ? window.DTMusicTrainerAssignments.getData() : {students:[],assignments:[]};
+    }catch(error){ return {students:[],assignments:[]}; }
   }
 
   function linkedStudentName(studentId){
-    const data = assignmentData();
-    const student = (data.students || []).find(s => s.id === studentId);
-    return student ? student.name : "Unlinked student";
+    const student = (assignmentData().students || []).find(s => s.id === studentId);
+    return student ? student.name : "Linked student";
   }
 
   function syncStudentProfile(account){
@@ -185,141 +204,204 @@
     }
   }
 
+  function getPublicSession(){
+    if(!currentAccount) return null;
+    return {
+      uid:currentAccount.uid,
+      id:currentAccount.uid,
+      email:currentAccount.email || "",
+      displayName:currentAccount.displayName || "",
+      role:currentAccount.role,
+      academyId:currentAccount.academyId || "",
+      studentId:currentAccount.studentId || ""
+    };
+  }
+
   function applyRole(account){
     document.body.classList.remove("role-teacher","role-student","auth-signed-out");
-    if(!account){
-      document.body.classList.add("auth-signed-out");
-      return;
-    }
-
+    if(!account){ document.body.classList.add("auth-signed-out"); return; }
     document.body.classList.add(account.role === "student" ? "role-student" : "role-teacher");
+
     const accountBtn = $("authAccountBtn");
-    if(accountBtn){
-      accountBtn.textContent = (account.role === "student" ? "Student · " : "Teacher · ") + (account.displayName || account.login);
-    }
+    if(accountBtn) accountBtn.textContent = (account.role === "student" ? "Student · " : "Teacher · ") + (account.displayName || account.email);
+    const sub = document.querySelector(".topbar .sub");
+    if(sub) sub.textContent = "Phase 6B · Firebase Cloud Sync";
 
     if(account.role === "student"){
-      syncStudentProfile(account);
       const launch = $("assignmentLaunchBtn");
       if(launch) launch.textContent = "My Assignments";
       setTimeout(() => {
         syncStudentProfile(account);
-        const studentTab = $("assignmentStudentTab");
-        if(studentTab) studentTab.click();
-      },80);
+        const tab = $("assignmentStudentTab");
+        if(tab) tab.click();
+      },120);
     }else{
       const launch = $("assignmentLaunchBtn");
       if(launch) launch.textContent = "Open Assignment Dashboard";
     }
 
-    const sub = document.querySelector(".topbar .sub");
-    if(sub) sub.textContent = "Phase 6A · Accounts & Roles";
-
     window.dispatchEvent(new CustomEvent("dtmtp:auth-changed",{detail:getPublicSession()}));
   }
 
-  function getPublicSession(){
-    if(!currentAccount) return null;
-    return {
-      id:currentAccount.id,
-      login:currentAccount.login,
-      displayName:currentAccount.displayName,
-      role:currentAccount.role,
-      studentId:currentAccount.studentId || ""
-    };
+  async function waitForProfile(uid,tries){
+    const F = fb();
+    for(let i=0;i<(tries || 1);i++){
+      const snap = await F.getDoc(F.doc(F.db,"users",uid));
+      if(snap.exists()) return snap;
+      await new Promise(r => setTimeout(r,180));
+    }
+    return null;
   }
 
-  function showGate(){
-    showCorrectGate();
-    const gate = $("authGate");
-    if(gate) gate.classList.add("show");
-    document.body.classList.add("auth-signed-out");
+  async function bootstrapTeacherProfile(user){
+    const F = fb();
+    const academyId = "academy-" + user.uid;
+    const academyName = String($("authAcademyName") && $("authAcademyName").value || "DT Music Academy").trim() || "DT Music Academy";
+    await F.setDoc(F.doc(F.db,"academies",academyId),{
+      name:academyName,
+      ownerUid:user.uid,
+      createdAt:F.serverTimestamp(),
+      updatedAt:F.serverTimestamp()
+    },{merge:true});
+    await F.setDoc(F.doc(F.db,"users",user.uid),{
+      uid:user.uid,
+      email:user.email || "",
+      displayName:user.displayName || legacyTeacherName() || "Teacher",
+      role:"teacher",
+      academyId,
+      studentId:"",
+      disabled:false,
+      createdAt:F.serverTimestamp(),
+      updatedAt:F.serverTimestamp()
+    },{merge:true});
+    return waitForProfile(user.uid,3);
   }
 
-  function hideGate(){
-    const gate = $("authGate");
-    if(gate) gate.classList.remove("show");
+  async function activateFirebaseUser(user){
+    if(!user){
+      currentAccount = null;
+      applyRole(null);
+      showGate("login");
+      return;
+    }
+
+    try{
+      let profileSnap = await waitForProfile(user.uid,creatingTeacher ? 8 : 2);
+      if(!profileSnap){
+        profileSnap = await bootstrapTeacherProfile(user);
+      }
+      if(!profileSnap || !profileSnap.exists()) throw new Error("Cloud profile could not be created.");
+      const profile = profileSnap.data();
+      if(profile.disabled === true){
+        await fb().signOut(fb().auth);
+        setGateMessage("This login has been disabled by the teacher.",true);
+        return;
+      }
+
+      currentAccount = {
+        uid:user.uid,
+        email:user.email || profile.email || "",
+        displayName:profile.displayName || user.displayName || user.email || "Account",
+        role:profile.role === "student" ? "student" : "teacher",
+        academyId:profile.academyId || "",
+        studentId:profile.studentId || ""
+      };
+      hideGate();
+      applyRole(currentAccount);
+      renderAccountPanel();
+    }catch(error){
+      console.error("Firebase account activation failed",error);
+      currentAccount = null;
+      applyRole(null);
+      showGate("login");
+      setGateMessage("Firebase signed in, but Firestore access failed. Publish the DT Music Trainer Firestore rules, then sign in again.",true);
+    }
   }
 
   async function createTeacher(){
+    const F = fb();
+    if(!F){ setGateMessage("Firebase is still loading.",true); return; }
     const displayName = String($("authSetupName").value || "").trim();
-    const login = normalizedLogin($("authSetupLogin").value);
+    const email = String($("authSetupEmail").value || "").trim().toLowerCase();
     const password = String($("authSetupPassword").value || "");
-
     if(!displayName){ setGateMessage("Enter your name.",true); return; }
-    if(login.length < 3){ setGateMessage("Login ID must be at least 3 characters.",true); return; }
+    if(!email.includes("@")){ setGateMessage("Enter a valid email address.",true); return; }
     if(password.length < 6){ setGateMessage("Password must be at least 6 characters.",true); return; }
-    if(accounts.some(a => a.login === login)){ setGateMessage("That Login ID is already in use.",true); return; }
 
-    const salt = randomSalt();
-    const account = {
-      id:makeId("account"),
-      login,
-      displayName,
-      role:"teacher",
-      studentId:"",
-      salt,
-      passwordHash:await passwordHash(login,password,salt),
-      createdAt:new Date().toISOString()
-    };
-    accounts.push(account);
-    saveAccounts();
-    signInAccount(account);
+    creatingTeacher = true;
+    setGateMessage("Creating your Firebase teacher account…");
+    try{
+      const credential = await F.createUserWithEmailAndPassword(F.auth,email,password);
+      await F.updateProfile(credential.user,{displayName});
+      await bootstrapTeacherProfile(credential.user);
+      await activateFirebaseUser(credential.user);
+      toast("Cloud teacher account created. Local assignment data is being migrated.");
+    }catch(error){
+      console.error("Teacher setup failed",error);
+      setGateMessage(friendlyError(error),true);
+    }finally{
+      creatingTeacher = false;
+    }
   }
 
   async function signIn(){
-    const login = normalizedLogin($("authLoginId").value);
+    const F = fb();
+    if(!F){ setGateMessage("Firebase is still loading.",true); return; }
+    const email = String($("authLoginEmail").value || "").trim().toLowerCase();
     const password = String($("authLoginPassword").value || "");
-    const account = accounts.find(a => a.login === login);
-    if(!account){ setGateMessage("Login ID or password is incorrect.",true); return; }
-    const hash = await passwordHash(login,password,account.salt);
-    if(hash !== account.passwordHash){ setGateMessage("Login ID or password is incorrect.",true); return; }
-    signInAccount(account);
+    if(!email || !password){ setGateMessage("Enter your email and password.",true); return; }
+    setGateMessage("Signing in…");
+    try{
+      await F.signInWithEmailAndPassword(F.auth,email,password);
+    }catch(error){
+      console.error("Firebase sign in failed",error);
+      setGateMessage(friendlyError(error),true);
+    }
   }
 
-  function signInAccount(account){
-    currentAccount = account;
-    localStorage.setItem(SESSION_KEY,account.id);
-    hideGate();
-    applyRole(account);
-    renderAccountPanel();
+  function friendlyError(error){
+    const code = String(error && error.code || "");
+    if(code.includes("email-already-in-use")) return "That email already has a Firebase account. Use Sign In instead.";
+    if(code.includes("invalid-credential") || code.includes("wrong-password") || code.includes("user-not-found")) return "Email or password is incorrect.";
+    if(code.includes("weak-password")) return "Use a stronger password with at least 6 characters.";
+    if(code.includes("permission-denied")) return "Firestore permission denied. Publish the DT Music Trainer security rules first.";
+    if(code.includes("network-request-failed")) return "Firebase could not connect. Check your internet connection.";
+    return (error && error.message) ? error.message : "Something went wrong with Firebase.";
   }
 
-  function logout(){
-    localStorage.removeItem(SESSION_KEY);
-    currentAccount = null;
+  async function logout(){
+    const F = fb();
+    if(F) await F.signOut(F.auth);
     const panel = $("authPanel");
     if(panel) panel.classList.remove("show");
-    applyRole(null);
-    showGate();
   }
 
-  function restoreSession(){
-    const id = localStorage.getItem(SESSION_KEY) || "";
-    const account = accounts.find(a => a.id === id) || null;
-    if(account){
-      currentAccount = account;
-      hideGate();
-      applyRole(account);
-      renderAccountPanel();
-      return true;
+  async function loadStudentAccounts(){
+    if(!currentAccount || currentAccount.role !== "teacher" || !fb()) return;
+    const F = fb();
+    try{
+      const q = F.query(F.collection(F.db,"users"),F.where("academyId","==",currentAccount.academyId));
+      const snap = await F.getDocs(q);
+      studentAccounts = snap.docs.map(d => ({uid:d.id,...d.data()})).filter(a => a.role === "student");
+      populateStudentProfiles();
+      renderStudentAccounts();
+    }catch(error){
+      console.error("Student accounts could not be loaded",error);
+      toast("Could not load student cloud logins.");
     }
-    currentAccount = null;
-    showGate();
-    return false;
   }
 
   function populateStudentProfiles(){
     const select = $("authStudentProfile");
     if(!select) return;
     const data = assignmentData();
-    const linked = new Set(accounts.filter(a => a.role === "student" && a.studentId).map(a => a.studentId));
+    const linked = new Set(studentAccounts.filter(a => !a.disabled && a.studentId).map(a => a.studentId));
     const students = (data.students || []).filter(s => !linked.has(s.id));
     select.innerHTML = "";
     if(!students.length){
       const opt = document.createElement("option");
       opt.value = "";
-      opt.textContent = (data.students || []).length ? "All student profiles already have logins" : "Create a student in Assignment Dashboard first";
+      opt.textContent = (data.students || []).length ? "All profiles already have active logins" : "Create a student in Assignment Dashboard first";
       select.appendChild(opt);
       return;
     }
@@ -335,158 +417,158 @@
     const list = $("authStudentAccountList");
     if(!list) return;
     list.innerHTML = "";
-    const rows = accounts.filter(a => a.role === "student");
-    if(!rows.length){
-      list.innerHTML = '<div class="auth-empty">No student logins yet.</div>';
-      return;
-    }
-    rows.forEach(account => {
+    if(!studentAccounts.length){ list.innerHTML = '<div class="auth-empty">No student cloud logins yet.</div>'; return; }
+    studentAccounts.forEach(account => {
       const row = document.createElement("div");
-      row.className = "auth-account-row";
+      row.className = "auth-account-row" + (account.disabled ? " auth-account-disabled" : "");
       const text = document.createElement("div");
-      text.innerHTML = '<strong></strong><span></span>';
-      text.querySelector("strong").textContent = account.displayName || account.login;
-      text.querySelector("span").textContent = "Login: " + account.login + " · " + linkedStudentName(account.studentId);
+      text.innerHTML = '<strong></strong><span></span>' + (account.disabled ? '<em>Disabled</em>' : '');
+      text.querySelector("strong").textContent = account.displayName || account.email || "Student";
+      text.querySelector("span").textContent = (account.email || "No email") + " · " + linkedStudentName(account.studentId);
       const actions = document.createElement("div");
       actions.className = "auth-row-actions";
-
       const reset = document.createElement("button");
       reset.type = "button";
-      reset.textContent = "Reset Password";
-      reset.onclick = () => resetStudentPassword(account.id);
-
-      const del = document.createElement("button");
-      del.type = "button";
-      del.className = "danger";
-      del.textContent = "Delete Login";
-      del.onclick = () => deleteStudentLogin(account.id);
-
-      actions.append(reset,del);
+      reset.textContent = "Send Password Reset";
+      reset.onclick = () => sendStudentReset(account);
+      const toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = account.disabled ? "" : "danger";
+      toggle.textContent = account.disabled ? "Enable Login" : "Disable Login";
+      toggle.onclick = () => toggleStudent(account);
+      actions.append(reset,toggle);
       row.append(text,actions);
       list.appendChild(row);
     });
   }
 
+  async function createStudentLogin(){
+    if(!currentAccount || currentAccount.role !== "teacher" || !fb()) return;
+    const studentId = String($("authStudentProfile").value || "");
+    const email = String($("authStudentEmail").value || "").trim().toLowerCase();
+    const password = String($("authStudentPassword").value || "");
+    const student = (assignmentData().students || []).find(s => s.id === studentId);
+    if(!student){ toast("Choose an available student profile."); return; }
+    if(!email.includes("@")){ toast("Enter a valid student email address."); return; }
+    if(password.length < 6){ toast("Temporary password must be at least 6 characters."); return; }
+
+    try{
+      const F = fb();
+      const created = await F.createSecondaryUser(email,password,student.name);
+      await F.setDoc(F.doc(F.db,"users",created.uid),{
+        uid:created.uid,
+        email:created.email,
+        displayName:student.name,
+        role:"student",
+        academyId:currentAccount.academyId,
+        studentId:student.id,
+        disabled:false,
+        createdAt:F.serverTimestamp(),
+        updatedAt:F.serverTimestamp()
+      });
+      $("authStudentEmail").value = "";
+      $("authStudentPassword").value = "";
+      await loadStudentAccounts();
+      toast("Cloud login created for " + student.name + ".");
+    }catch(error){
+      console.error("Student cloud account creation failed",error);
+      toast(friendlyError(error));
+    }
+  }
+
+  async function sendStudentReset(account){
+    if(!account || !account.email || !fb()) return;
+    try{
+      await fb().sendPasswordResetEmail(fb().auth,account.email);
+      toast("Password reset email sent to " + account.email + ".");
+    }catch(error){ toast(friendlyError(error)); }
+  }
+
+  async function toggleStudent(account){
+    if(!account || !fb()) return;
+    const next = !account.disabled;
+    if(next && !confirm("Disable login for " + (account.displayName || account.email) + "? Their student profile and assignments will stay intact.")) return;
+    try{
+      await fb().updateDoc(fb().doc(fb().db,"users",account.uid),{disabled:next,updatedAt:fb().serverTimestamp()});
+      await loadStudentAccounts();
+      toast(next ? "Student login disabled." : "Student login enabled.");
+    }catch(error){ toast(friendlyError(error)); }
+  }
+
   function renderAccountPanel(){
     if(!currentAccount) return;
     const subtitle = $("authPanelSubtitle");
-    if(subtitle) subtitle.textContent = currentAccount.role === "teacher" ? "Teacher account · local Phase 6A" : "Student account · local Phase 6A";
-    const current = $("authCurrentCard");
-    if(current){
-      current.innerHTML = "";
+    if(subtitle) subtitle.textContent = currentAccount.role === "teacher" ? "Teacher · Firebase cloud account" : "Student · Firebase cloud account";
+    const card = $("authCurrentCard");
+    if(card){
+      card.innerHTML = "";
       const name = document.createElement("div");
       name.className = "auth-current-name";
-      name.textContent = currentAccount.displayName || currentAccount.login;
+      name.textContent = currentAccount.displayName || currentAccount.email;
       const meta = document.createElement("div");
       meta.className = "auth-current-meta";
-      meta.textContent = (currentAccount.role === "teacher" ? "Teacher" : "Student") + " · Login ID: " + currentAccount.login +
-        (currentAccount.role === "student" ? " · Profile: " + linkedStudentName(currentAccount.studentId) : "");
-      current.append(name,meta);
+      meta.textContent = (currentAccount.role === "teacher" ? "Teacher" : "Student") + " · " + currentAccount.email + (currentAccount.role === "student" ? " · " + linkedStudentName(currentAccount.studentId) : "");
+      card.append(name,meta);
     }
     const tools = $("authTeacherTools");
     if(tools) tools.style.display = currentAccount.role === "teacher" ? "block" : "none";
-    if(currentAccount.role === "teacher"){
-      populateStudentProfiles();
-      renderStudentAccounts();
-    }
+    if(currentAccount.role === "teacher") loadStudentAccounts();
   }
 
-  async function createStudentLogin(){
-    if(!currentAccount || currentAccount.role !== "teacher") return;
-    const studentId = String($("authStudentProfile").value || "");
-    const login = normalizedLogin($("authStudentLogin").value);
-    const password = String($("authStudentPassword").value || "");
-    const data = assignmentData();
-    const student = (data.students || []).find(s => s.id === studentId);
-
-    if(!student){ toast("Choose an available student profile."); return; }
-    if(login.length < 3){ toast("Login ID must be at least 3 characters."); return; }
-    if(password.length < 6){ toast("Password must be at least 6 characters."); return; }
-    if(accounts.some(a => a.login === login)){ toast("That Login ID is already in use."); return; }
-
-    const salt = randomSalt();
-    accounts.push({
-      id:makeId("account"),
-      login,
-      displayName:student.name,
-      role:"student",
-      studentId:student.id,
-      salt,
-      passwordHash:await passwordHash(login,password,salt),
-      createdAt:new Date().toISOString()
-    });
-    saveAccounts();
-    $("authStudentLogin").value = "";
-    $("authStudentPassword").value = "";
-    populateStudentProfiles();
-    renderStudentAccounts();
-    toast("Student login created for " + student.name + ".");
-  }
-
-  async function resetStudentPassword(accountId){
-    const account = accounts.find(a => a.id === accountId && a.role === "student");
-    if(!account) return;
-    const password = prompt("New password for " + (account.displayName || account.login) + ":");
-    if(password === null) return;
-    if(password.length < 6){ toast("Password must be at least 6 characters."); return; }
-    account.salt = randomSalt();
-    account.passwordHash = await passwordHash(account.login,password,account.salt);
-    saveAccounts();
-    toast("Password reset.");
-  }
-
-  function deleteStudentLogin(accountId){
-    const account = accounts.find(a => a.id === accountId && a.role === "student");
-    if(!account) return;
-    if(!confirm("Delete login for " + (account.displayName || account.login) + "? The Phase 5 student and assignments will not be deleted.")) return;
-    accounts = accounts.filter(a => a.id !== accountId);
-    saveAccounts();
-    populateStudentProfiles();
-    renderStudentAccounts();
-    toast("Student login deleted.");
+  function setCloudStatus(detail){
+    const node = $("authCloudStatus");
+    if(!node || !detail) return;
+    node.className = "auth-cloud-status " + (detail.state || "");
+    const text = node.querySelector("span:last-child");
+    if(text) text.textContent = detail.text || "Cloud";
   }
 
   function openAccountPanel(){
     if(!currentAccount) return;
     renderAccountPanel();
-    const panel = $("authPanel");
-    if(panel) panel.classList.add("show");
+    $("authPanel").classList.add("show");
+  }
+
+  function connectFirebase(){
+    if(firebaseConnected || !fb()) return;
+    firebaseConnected = true;
+    setGateMessage("");
+    if(authUnsubscribe) authUnsubscribe();
+    authUnsubscribe = fb().onAuthStateChanged(fb().auth,user => activateFirebaseUser(user));
   }
 
   function bind(){
-    $("authSetupBtn").addEventListener("click",createTeacher);
-    $("authLoginBtn").addEventListener("click",signIn);
+    $("authShowLogin").onclick = () => showView("login");
+    $("authShowSetup").onclick = () => showView("setup");
+    $("authSetupBtn").onclick = createTeacher;
+    $("authLoginBtn").onclick = signIn;
     $("authLoginPassword").addEventListener("keydown",e => { if(e.key === "Enter") signIn(); });
     $("authSetupPassword").addEventListener("keydown",e => { if(e.key === "Enter") createTeacher(); });
-    $("authAccountBtn").addEventListener("click",openAccountPanel);
-    $("authPanelClose").addEventListener("click",() => $("authPanel").classList.remove("show"));
+    $("authAccountBtn").onclick = openAccountPanel;
+    $("authPanelClose").onclick = () => $("authPanel").classList.remove("show");
     $("authPanel").addEventListener("click",e => { if(e.target === $("authPanel")) $("authPanel").classList.remove("show"); });
-    $("authLogoutBtn").addEventListener("click",logout);
-    $("authCreateStudentBtn").addEventListener("click",createStudentLogin);
+    $("authLogoutBtn").onclick = logout;
+    $("authCreateStudentBtn").onclick = createStudentLogin;
 
-    const assignmentLaunch = $("assignmentLaunchBtn");
-    if(assignmentLaunch){
-      assignmentLaunch.addEventListener("click",() => {
-        if(currentAccount && currentAccount.role === "student"){
-          setTimeout(() => {
-            syncStudentProfile(currentAccount);
-            const tab = $("assignmentStudentTab");
-            if(tab) tab.click();
-          },80);
-        }
-      });
-    }
+    const launch = $("assignmentLaunchBtn");
+    if(launch) launch.addEventListener("click",() => {
+      if(currentAccount && currentAccount.role === "student") setTimeout(() => {
+        syncStudentProfile(currentAccount);
+        const tab = $("assignmentStudentTab"); if(tab) tab.click();
+      },80);
+    });
+
+    window.addEventListener("dtmtp:cloud-status",e => setCloudStatus(e.detail));
+    window.addEventListener("dtmtp:cloud-data-applied",() => { if(currentAccount) syncStudentProfile(currentAccount); });
+    window.addEventListener("dtmtp:firebase-ready",connectFirebase);
   }
 
   function init(){
     injectUi();
     bind();
-    showCorrectGate();
-    restoreSession();
-
-    setTimeout(() => {
-      if(currentAccount) applyRole(currentAccount);
-    },250);
+    showGate("login");
+    loadCloudScripts();
+    if(window.DTMTPFirebase) connectFirebase();
   }
 
   window.DTMusicTrainerAuth = {

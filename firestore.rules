@@ -1,0 +1,81 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function hasUserProfile() {
+      return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function me() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function activeUser() {
+      return hasUserProfile() && me().data.disabled != true;
+    }
+
+    function teacherFor(academyId) {
+      return activeUser() && me().data.role == 'teacher' && me().data.academyId == academyId;
+    }
+
+    function studentFor(academyId, studentId) {
+      return activeUser() &&
+        me().data.role == 'student' &&
+        me().data.academyId == academyId &&
+        me().data.studentId == studentId;
+    }
+
+    match /academies/{academyId} {
+      allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid;
+      allow read: if activeUser() && me().data.academyId == academyId;
+      allow update: if teacherFor(academyId);
+      allow delete: if false;
+
+      match /students/{studentId} {
+        allow read: if teacherFor(academyId) || studentFor(academyId, studentId);
+        allow create, update, delete: if teacherFor(academyId);
+      }
+
+      match /assignments/{assignmentId} {
+        allow read: if teacherFor(academyId) || studentFor(academyId, resource.data.studentId);
+        allow create, delete: if teacherFor(academyId);
+        allow update: if teacherFor(academyId) ||
+          (studentFor(academyId, resource.data.studentId) &&
+           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['progress', 'updatedAt']));
+      }
+    }
+
+    match /users/{uid} {
+      allow read: if signedIn() && (
+        request.auth.uid == uid ||
+        (activeUser() && me().data.role == 'teacher' && me().data.academyId == resource.data.academyId)
+      );
+
+      allow create: if signedIn() && (
+        (
+          request.auth.uid == uid &&
+          request.resource.data.role == 'teacher' &&
+          request.resource.data.disabled == false &&
+          get(/databases/$(database)/documents/academies/$(request.resource.data.academyId)).data.ownerUid == request.auth.uid
+        ) ||
+        (
+          activeUser() &&
+          me().data.role == 'teacher' &&
+          me().data.academyId == request.resource.data.academyId &&
+          request.resource.data.role == 'student' &&
+          request.resource.data.disabled == false
+        )
+      );
+
+      allow update: if activeUser() &&
+        me().data.role == 'teacher' &&
+        me().data.academyId == resource.data.academyId &&
+        request.resource.data.academyId == resource.data.academyId;
+
+      allow delete: if false;
+    }
+  }
+}
