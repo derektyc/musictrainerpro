@@ -337,15 +337,38 @@
     else if(session.role === "student" && session.studentId) bootstrapStudent();
   }
 
-  window.addEventListener("dtmtp:auth-changed",event => begin(event.detail || null));
-  window.addEventListener("dtmtp:firebase-ready",() => {
+  function beginFromCurrentAuth(){
     try{
       const s = window.DTMusicTrainerAuth && window.DTMusicTrainerAuth.getSession
         ? window.DTMusicTrainerAuth.getSession()
         : null;
-      if(s) begin(s);
-    }catch(error){}
-  });
+      if(s && s.academyId){
+        const same = session &&
+          session.uid === s.uid &&
+          session.role === s.role &&
+          session.academyId === s.academyId &&
+          session.studentId === s.studentId;
+        if(!same) begin(s);
+        return true;
+      }
+    }catch(error){
+      console.warn("Cloud sync could not read the current auth session",error);
+    }
+    return false;
+  }
+
+  window.addEventListener("dtmtp:auth-changed",event => begin(event.detail || null));
+  window.addEventListener("dtmtp:firebase-ready",() => beginFromCurrentAuth());
+
+  // Dynamic module/script loading can finish in either order. Recover the current
+  // authenticated session even when dtmtp:auth-changed or firebase-ready happened
+  // before this file finished loading.
+  let startupAttempts = 0;
+  const startupTimer = setInterval(() => {
+    startupAttempts += 1;
+    if(beginFromCurrentAuth() || startupAttempts >= 20) clearInterval(startupTimer);
+  },150);
+  beginFromCurrentAuth();
 
   window.DTMusicTrainerCloudSync = {
     getStatus:() => ({session,queued:!!queuedRemote,syncing}),
