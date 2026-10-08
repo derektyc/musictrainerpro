@@ -46,6 +46,11 @@ service cloud.firestore {
           (studentFor(academyId, resource.data.studentId) &&
            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['progress', 'updatedAt']));
       }
+
+      match /songs/{songId} {
+        allow read: if activeUser() && me().data.academyId == academyId;
+        allow create, update, delete: if teacherFor(academyId);
+      }
     }
 
     match /users/{uid} {
