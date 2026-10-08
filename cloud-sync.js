@@ -2,7 +2,6 @@
   "use strict";
 
   const STORAGE_KEY = "dtmtp-phase5-assignments-v1";
-  const STUDENT_RENDER_KEY = "dtmtp-cloud-student-render-v2";
   let session = null;
   let unsubscribers = [];
   let pollTimer = null;
@@ -85,14 +84,6 @@
     applyingRemote = false;
   }
 
-  function scheduleStudentRenderReload(print){
-    if(!session || session.role !== "student") return;
-    const previous = sessionStorage.getItem(STUDENT_RENDER_KEY) || "";
-    if(previous === print) return;
-    sessionStorage.setItem(STUDENT_RENDER_KEY,print);
-    setTimeout(() => location.reload(),90);
-  }
-
   function writeRemoteToLocal(next,label){
     const nextPrint = fingerprint(next);
     applyingRemote = true;
@@ -106,7 +97,6 @@
       applyingRemote = false;
     }
     emitStatus("synced",label || "Cloud synced");
-    scheduleStudentRenderReload(nextPrint);
   }
 
   function scheduleRemoteApply(delay=180){
