@@ -631,8 +631,11 @@
 
     data.assignments.push(assignment);
     saveData();
+    window.dispatchEvent(new CustomEvent("dtmtp:assignment-created",{
+      detail:{assignmentId:assignment.id,studentId:assignment.studentId,songId:assignment.songId}
+    }));
     el.note.value = "";
-    toast("Assignment created for " + student.name + ".");
+    toast("Assignment created for " + student.name + ". Uploading song materials to cloud…");
   }
 
   function duplicateAssignment(id){
@@ -678,9 +681,20 @@
     }
   }
 
-  function loadAssignmentIntoPractice(id){
+  async function loadAssignmentIntoPractice(id){
     const a = data.assignments.find(x => x.id === id);
     if(!a) return;
+
+    if(window.DTMusicTrainerSongCloud && typeof window.DTMusicTrainerSongCloud.ensureSong === "function"){
+      try{
+        toast("Checking assignment materials…");
+        await window.DTMusicTrainerSongCloud.ensureSong(a.songId);
+      }catch(error){
+        console.error("Assignment materials unavailable",error);
+        toast(error && error.message ? error.message : "Assignment materials are not available yet.");
+        return;
+      }
+    }
 
     localStorage.setItem(ACTIVE_ASSIGNMENT_KEY,a.id);
     savePracticeSettingsForSong(a);
