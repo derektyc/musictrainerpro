@@ -26,13 +26,6 @@ import {
   writeBatch,
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
-import {
-  getStorage,
-  ref as storageRef,
-  uploadBytes,
-  getBytes,
-  deleteObject
-} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-storage.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBroqJWHdMCAaIsmudAyN4cMBzs-EkQBSc",
@@ -47,7 +40,6 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const storage = getStorage(app);
 
 try {
   await setPersistence(auth, browserLocalPersistence);
@@ -80,11 +72,6 @@ window.DTMTPFirebase = {
   app,
   auth,
   db,
-  storage,
-  storageRef,
-  uploadBytes,
-  getBytes,
-  deleteObject,
   onAuthStateChanged,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
