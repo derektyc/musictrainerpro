@@ -139,13 +139,13 @@
     if(!document.querySelector('script[data-dtmtp-firebase]')){
       const module = document.createElement("script");
       module.type = "module";
-      module.src = "./firebase-cloud.js";
+      module.src = "./firebase-cloud.js?v=20261008-2";
       module.dataset.dtmpFirebase = "1";
       document.head.appendChild(module);
     }
     if(!document.querySelector('script[data-dtmtp-cloud-sync]')){
       const script = document.createElement("script");
-      script.src = "./cloud-sync.js";
+      script.src = "./cloud-sync.js?v=20261008-2";
       script.dataset.dtmpCloudSync = "1";
       document.head.appendChild(script);
     }
