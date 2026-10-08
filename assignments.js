@@ -71,6 +71,14 @@
     renderAll();
   }
 
+  function reloadCloudData(){
+    data = loadData();
+    if(data.students.length && !data.students.some(s => s.id === data.activeStudentId)){
+      data.activeStudentId = data.students[0].id;
+    }
+    renderAll();
+  }
+
   function toast(message){
     if(!el.toast) return;
     clearTimeout(toastTimer);
@@ -834,6 +842,7 @@
     window.addEventListener("dtmtp:practice-speed-change",e => onPracticeEvent("speed",e));
     window.addEventListener("dtmtp:practice-stop",e => onPracticeEvent("stop",e));
     window.addEventListener("dtmtp:practice-complete",e => onPracticeEvent("complete",e));
+    window.addEventListener("dtmtp:cloud-data-applied",() => reloadCloudData());
 
     return true;
   }
@@ -854,6 +863,7 @@
     open:openModal,
     getData:() => JSON.parse(JSON.stringify(data)),
     getActiveStudent:() => activeStudent(),
+    reloadCloudData,
     loadAssignment:loadAssignmentIntoPractice
   };
 
