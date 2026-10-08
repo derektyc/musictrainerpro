@@ -376,6 +376,58 @@
     if(panel) panel.classList.remove("show");
   }
 
+  function normalizeStudentLinkName(value){
+    return String(value || "").trim().toLowerCase().replace(/\s+/g," ");
+  }
+
+  async function repairBrokenStudentLinks(){
+    if(!currentAccount || currentAccount.role !== "teacher" || !fb()) return;
+    const F = fb();
+    const students = assignmentData().students || [];
+    if(!students.length) return;
+
+    for(const account of studentAccounts){
+      if(students.some(s => s.id === account.studentId)) continue;
+      const accountName = normalizeStudentLinkName(account.displayName);
+      const matches = students.filter(s => normalizeStudentLinkName(s.name) === accountName);
+      if(matches.length !== 1) continue;
+
+      const matched = matches[0];
+      await F.updateDoc(F.doc(F.db,"users",account.uid),{
+        studentId:matched.id,
+        updatedAt:F.serverTimestamp()
+      });
+      account.studentId = matched.id;
+    }
+  }
+
+  async function relinkStudent(account){
+    if(!account || !currentAccount || currentAccount.role !== "teacher" || !fb()) return;
+    const students = assignmentData().students || [];
+    if(!students.length){ toast("Create a student profile first."); return; }
+
+    const choices = students.map((s,i) => (i+1) + ". " + s.name).join("\n");
+    const answer = prompt("Link " + (account.displayName || account.email || "student") + " to which student?\n\n" + choices + "\n\nEnter the number:");
+    if(answer === null) return;
+    const index = Number.parseInt(String(answer).trim(),10) - 1;
+    const student = students[index];
+    if(!student){ toast("Invalid student number."); return; }
+
+    try{
+      const F = fb();
+      await F.updateDoc(F.doc(F.db,"users",account.uid),{
+        studentId:student.id,
+        displayName:student.name,
+        updatedAt:F.serverTimestamp()
+      });
+      await loadStudentAccounts();
+      toast("Student login linked to " + student.name + ".");
+    }catch(error){
+      console.error("Student relink failed",error);
+      toast(friendlyError(error));
+    }
+  }
+
   async function loadStudentAccounts(){
     if(!currentAccount || currentAccount.role !== "teacher" || !fb()) return;
     const F = fb();
@@ -383,6 +435,7 @@
       const q = F.query(F.collection(F.db,"users"),F.where("academyId","==",currentAccount.academyId));
       const snap = await F.getDocs(q);
       studentAccounts = snap.docs.map(d => ({uid:d.id,...d.data()})).filter(a => a.role === "student");
+      await repairBrokenStudentLinks();
       populateStudentProfiles();
       renderStudentAccounts();
     }catch(error){
@@ -431,12 +484,16 @@
       reset.type = "button";
       reset.textContent = "Send Password Reset";
       reset.onclick = () => sendStudentReset(account);
+      const relink = document.createElement("button");
+      relink.type = "button";
+      relink.textContent = "Link Profile";
+      relink.onclick = () => relinkStudent(account);
       const toggle = document.createElement("button");
       toggle.type = "button";
       toggle.className = account.disabled ? "" : "danger";
       toggle.textContent = account.disabled ? "Enable Login" : "Disable Login";
       toggle.onclick = () => toggleStudent(account);
-      actions.append(reset,toggle);
+      actions.append(reset,relink,toggle);
       row.append(text,actions);
       list.appendChild(row);
     });
