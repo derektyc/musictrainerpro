@@ -145,8 +145,12 @@
     }
     if(!document.querySelector('script[data-dtmtp-cloud-sync]')){
       const script = document.createElement("script");
-      script.src = "./cloud-sync.js?v=20261008-2";
+      script.src = "./cloud-sync.js?v=20261008-3";
       script.dataset.dtmpCloudSync = "1";
+      script.onload = () => {
+        const current = getPublicSession();
+        if(current) window.dispatchEvent(new CustomEvent("dtmtp:auth-changed",{detail:current}));
+      };
       document.head.appendChild(script);
     }
   }
