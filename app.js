@@ -220,11 +220,17 @@
     song.updatedAt = Date.now();
     const tx = db.transaction(SONG_STORE, "readwrite");
     await idbRequest(tx.objectStore(SONG_STORE).put(song));
+    window.dispatchEvent(new CustomEvent("dtmtp:library-changed",{
+      detail:{type:"put",songId:song.id,updatedAt:song.updatedAt}
+    }));
   }
 
   async function removeSong(id) {
     const tx = db.transaction(SONG_STORE, "readwrite");
     await idbRequest(tx.objectStore(SONG_STORE).delete(id));
+    window.dispatchEvent(new CustomEvent("dtmtp:library-changed",{
+      detail:{type:"delete",songId:id}
+    }));
   }
 
   async function clearSongs() {
@@ -1445,6 +1451,12 @@
   };
 
   window.addEventListener("beforeunload", revokeBackingUrl);
+
+  window.DTMusicTrainerLibrary = {
+    getSong,
+    getAllSongs:allSongs,
+    refresh:refreshCache
+  };
 
   async function init() {
     try {
