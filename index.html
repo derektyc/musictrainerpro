@@ -18,7 +18,7 @@
   <header class="topbar">
     <div class="brand-wrap">
       <div class="brand">DT Music Trainer Pro</div>
-      <div class="sub">Phase 6A · Accounts & Roles</div>
+      <div class="sub">Phase 6B · Cloud Assignments & Materials</div>
     </div>
     <div id="statusPill" class="status-pill">Starting…</div>
   </header>
@@ -79,7 +79,7 @@
           <div class="assignment-summary-box"><div id="assignmentSummaryDone" class="n">0</div><div class="l">Completed</div></div>
         </div>
         <button id="assignmentLaunchBtn" class="btn primary" type="button">Open Assignment Dashboard</button>
-        <div class="note">Assignments are linked to teacher/student roles. Phase 6A accounts are stored locally on this device.</div>
+        <div class="note">Assignments and progress sync through Firebase. Assigned song materials can be cached locally from Firebase Storage.</div>
       </div>
 
       <div class="section">
@@ -220,7 +220,7 @@
         <div id="emptyState" class="empty">
           <div class="empty-card">
             <h2 id="emptyTitle">DT Music Trainer Pro</h2>
-            <p id="emptyText">Phase 6A adds teacher and student accounts with role-based access on top of the assignment system.</p>
+            <p id="emptyText">Phase 6B syncs assignments, progress and assigned song materials across devices.</p>
           </div>
         </div>
         <div id="loading" class="loading">Rendering score…</div>
@@ -268,7 +268,7 @@
     <div class="assignment-head">
       <div>
         <div class="assignment-head-title">DT Music Academy · Assignment Dashboard</div>
-        <div class="assignment-head-sub">Phase 6A roles · teacher manages assignments, students see their own work</div>
+        <div class="assignment-head-sub">Phase 6B cloud roles · teacher assigns, students practise from synced materials</div>
       </div>
       <button id="assignmentCloseBtn" class="assignment-close" type="button">×</button>
     </div>
@@ -344,9 +344,9 @@
 <div id="practiceCountdown" class="practice-countdown"><div id="practiceCountdownNumber" class="practice-countdown-number">1</div></div>
 <div id="assignmentToast" class="assignment-toast"></div>
 <div id="toast" class="toast"></div>
-<script src="./app.js"></script>
+<script src="./app.js?v=20261008-4"></script>
 <script src="./practice.js"></script>
-<script src="./assignments.js?v=20261008-2"></script>
-<script src="./auth.js?v=20261008-3"></script>
+<script src="./assignments.js?v=20261008-4"></script>
+<script src="./auth.js?v=20261008-4"></script>\n<script src="./song-cloud.js?v=20261008-4"></script>
 </body>
 </html>
