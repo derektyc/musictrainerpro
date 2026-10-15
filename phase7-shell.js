@@ -559,12 +559,10 @@
     if(!session || session.role!=="teacher") return;
     const data=assignmentData();
     const students=data.students||[];
-    const preferred=students.find(s=>s.id===studentId) ||
-      students.find(s=>s.id===(window.DTMusicTrainerAssignments&&window.DTMusicTrainerAssignments.getActiveStudent&&window.DTMusicTrainerAssignments.getActiveStudent()||{}).id) ||
-      students[0] || null;
+    const preferred=studentId ? (students.find(s=>s.id===studentId)||null) : null;
 
     assignmentWizard={
-      step:studentId&&preferred?2:1,
+      step:preferred?2:1,
       studentId:preferred?preferred.id:"",
       songId:"",
       startBar:1,
