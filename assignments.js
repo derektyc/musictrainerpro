@@ -96,16 +96,6 @@
     saveData();
   }
 
-  function updateStudentNotes(id,notes){
-    const student = data.students.find(s => s.id === id);
-    if(!student) return false;
-    student.teacherNotes = String(notes || "").trim().slice(0,4000);
-    student.updatedAt = new Date().toISOString();
-    saveData();
-    window.dispatchEvent(new CustomEvent("dtmtp:student-updated",{detail:{studentId:id}}));
-    return true;
-  }
-
   function localDateKey(value){
     const d = value instanceof Date ? value : new Date(value);
     if(Number.isNaN(d.getTime())) return "";
@@ -897,7 +887,6 @@
     getData:() => JSON.parse(JSON.stringify(data)),
     getActiveStudent:() => activeStudent(),
     setActiveStudent:id => setActiveStudent(id),
-    updateStudentNotes:(id,notes) => updateStudentNotes(id,notes),
     getStatus:id => {
       const a = data.assignments.find(x => x.id === id);
       return a ? assignmentStatus(a) : "";
