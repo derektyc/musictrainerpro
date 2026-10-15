@@ -48,8 +48,20 @@
     return m<60 ? m+"m" : Math.floor(m/60)+"h "+(m%60)+"m";
   }
 
+  function assignmentStatus(a){
+    if(!a) return "";
+    try{
+      const api=window.DTMusicTrainerAssignments;
+      if(api && typeof api.getStatus==="function" && a.id){
+        const status=api.getStatus(a.id);
+        if(status) return status;
+      }
+    }catch(error){}
+    return a.progress && a.progress.status ? a.progress.status : "Not Started";
+  }
+
   function isCompleted(a){
-    return !!(a && a.progress && a.progress.status==="Completed");
+    return assignmentStatus(a)==="Completed";
   }
 
   function todayKey(){
@@ -241,7 +253,11 @@
   }
 
   function teacherIsOverdue(a){
-    if(!a||isCompleted(a)||!a.dueDate) return false;
+    if(!a) return false;
+    const status=assignmentStatus(a);
+    if(status==="Overdue") return true;
+    if(status==="Completed") return false;
+    if(!a.dueDate) return false;
     const due=new Date(a.dueDate+"T23:59:59");
     return !Number.isNaN(due.getTime()) && Date.now()>due.getTime();
   }
@@ -278,11 +294,18 @@
   }
 
   function openTeacherStudent(studentId){
-    const select=$("assignmentStudentSelect");
-    if(select && studentId){
-      select.value=studentId;
-      select.dispatchEvent(new Event("change",{bubbles:true}));
-    }
+    try{
+      const api=window.DTMusicTrainerAssignments;
+      if(api && typeof api.setActiveStudent==="function" && studentId){
+        api.setActiveStudent(studentId);
+      }else{
+        const select=$("assignmentStudentSelect");
+        if(select && studentId){
+          select.value=studentId;
+          select.dispatchEvent(new Event("change",{bubbles:true}));
+        }
+      }
+    }catch(error){}
     openAssignments("teacher");
   }
 
@@ -294,7 +317,6 @@
     const sessions=teacherSessions(data);
     const weekSessions=sessions.filter(s=>s.time>=weekStart);
     const weekMinutes=weekSessions.reduce((n,s)=>n+Number(s.practiceMs||0),0);
-    const weekStudents=new Set(weekSessions.map(s=>s.studentId));
 
     const summaries=students.map(s=>{
       const mine=assignments.filter(a=>a.studentId===s.id);
@@ -322,6 +344,7 @@
     });
 
     const practicedTodayCount=summaries.filter(x=>x.practicedToday).length;
+    const weekStudents=new Set(summaries.filter(x=>x.last&&x.last>=weekStart).map(x=>x.student.id));
     const active=assignments.filter(a=>!isCompleted(a));
     const overdue=active.filter(teacherIsOverdue);
     const attention=summaries.filter(x=>x.priority>0).sort((a,b)=>b.priority-a.priority || (a.last||0)-(b.last||0));
@@ -368,7 +391,7 @@
       '</div>'+
       '<div class="p7-teacher-week-card">'+
         '<div><div class="p7-eyebrow">This week</div><strong>'+weekSessions.length+'</strong><span>completed sessions</span></div>'+
-        '<div><strong>'+fmtMinutes(weekMinutes)+'</strong><span>recorded session time</span></div>'+
+        '<div><strong>'+fmtMinutes(weekMinutes)+'</strong><span>completed session time</span></div>'+
         '<div><strong>'+active.length+'</strong><span>active assignments</span></div>'+
         '<button id="p7TeacherAllStudents" class="p7-secondary" type="button">View all students</button>'+
       '</div>'+
