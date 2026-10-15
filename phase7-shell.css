@@ -1194,8 +1194,9 @@ body.p7-ready .auth-account-btn{
     padding-right:max(10px,env(safe-area-inset-right,0px))
   }
   body.p7-ready .topbar .brand-wrap{display:none}
-  body.p7-ready .status-pill{max-width:42vw}
-  body.p7-ready .auth-account-btn{max-width:52vw}
+  body.p7-ready .auth-topbar-wrap{width:100%;justify-content:flex-end;gap:6px}
+  body.p7-ready .status-pill{max-width:34vw}
+  body.p7-ready .auth-account-btn{max-width:50vw}
 
   #p7Shell{
     display:block;position:relative;
