@@ -28,8 +28,33 @@ Automated checks already passed:
 - CSS balance and responsive profile breakpoints.
 - Student navigation remains student-only.
 - Teacher notes are stored on the teacher user document rather than student-readable records.
+- Phase 7.4 regression checks were rerun after the Phase 7.5 changes and still pass.
 
 ## Phase 7.5 — Assignment Wizard
+
+Automated checks already passed:
+- Four-step Student > Song > Practice > Review wizard is present.
+- General wizard does not silently preselect a student.
+- Student Profile > + New Assignment can preselect that student and begin at Song.
+- Songs without an interactive score are blocked from selection.
+- Synced Backing is disabled when the selected song has no backing track.
+- Practice values are normalized and clamped before saving.
+- Invalid student / empty song creation is rejected.
+- Count-in preference is preserved.
+- Teacher note length is capped safely.
+- Assignment creation saves locally and dispatches the existing dtmtp:assignment-created event.
+- Existing Google Drive publish listener still receives assignment-created events.
+- Existing Firebase teacher sync and student progress sync remain intact.
+- Teacher Assignments no longer automatically opens the old modal.
+- Student assignment page still hides teacher-only creation controls.
+- CSS and JavaScript syntax/regression checks pass.
+- Phase 7.3 / 7.4 assignment status and student-profile calculations still pass.
+
+Bugs found and fixed during Phase 7.5 testing:
+- Removed accidental student preselection in the general New Assignment flow.
+- Fixed the song-loading state being replaced too early while the library was still loading.
+- Added a recovery path when there are no students yet.
+- Added a Song Library shortcut when no songs with an interactive score are assignable.
 
 Pending live checks after deployment:
 - Dashboard > + New Assignment opens the new wizard.
