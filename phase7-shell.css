@@ -969,6 +969,7 @@ body.role-student .p7-practice-main .viewer-head{padding:8px 11px}
 /* ==========================================
    PHASE 7.7 · SCORE-FIRST PRACTICE PLAYER
 ========================================== */
+#p7PagePractice{position:relative}
 .p7-page.p7-practice-page.active{background:#171718}
 .p77-page-title{display:flex;align-items:baseline;gap:8px;min-width:0}
 .p77-page-title strong{font-size:12px}
