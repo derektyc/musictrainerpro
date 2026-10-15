@@ -13,7 +13,7 @@
   let selectedTeacherStudentId = "";
   let assignmentWizard = null;
   let assignmentWizardSongs = [];
-  let libraryState = {filter:"all",search:"",selectedId:"",message:""};
+  let libraryState = {filter:"all",search:"",selectedId:"",message:"",detailOpen:false};
   let librarySongs = [];
   let libraryRenderToken = 0;
   let libraryAudioUrl = "";
@@ -443,9 +443,8 @@
     root.querySelectorAll("[data-p76-song]").forEach(b=>b.onclick=async()=>{
       libraryState.selectedId=b.dataset.p76Song;
       try{if(api.selectSong) await api.selectSong(libraryState.selectedId);}catch(error){}
+      libraryState.detailOpen=true;
       await renderLibraryPage();
-      const nextRoot=$("p76LibraryRoot");
-      if(nextRoot) nextRoot.classList.add("p76-show-detail");
     });
 
     const add=$("p76AddSong"); if(add) add.onclick=()=>openLibraryAddSong();
@@ -502,7 +501,10 @@
       catch(error){setLibraryMessage(error.message||"Could not delete song.");}
     };
 
-    const back=$("p76MobileBack"); if(back) back.onclick=()=>root.classList.remove("p76-show-detail");
+    const back=$("p76MobileBack"); if(back) back.onclick=()=>{libraryState.detailOpen=false;root.classList.remove("p76-show-detail");};
+
+    if(libraryState.detailOpen) root.classList.add("p76-show-detail");
+    else root.classList.remove("p76-show-detail");
 
     if(selected&&selected.audio&&selected.audio.blob){
       const audio=$("p76AudioPreview");
@@ -1789,6 +1791,9 @@
   });
   window.addEventListener("dtmtp:materials-ready",refreshData);
   window.addEventListener("dtmtp:library-changed",()=>{
+    if(currentRoute==="library") renderLibraryPage();
+  });
+  window.addEventListener("dtmtp:cloud-status",()=>{
     if(currentRoute==="library") renderLibraryPage();
   });
 
