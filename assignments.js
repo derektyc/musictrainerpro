@@ -886,6 +886,11 @@
     open:openModal,
     getData:() => JSON.parse(JSON.stringify(data)),
     getActiveStudent:() => activeStudent(),
+    setActiveStudent:id => setActiveStudent(id),
+    getStatus:id => {
+      const a = data.assignments.find(x => x.id === id);
+      return a ? assignmentStatus(a) : "";
+    },
     reloadCloudData,
     loadAssignment:loadAssignmentIntoPractice
   };
