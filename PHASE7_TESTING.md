@@ -71,3 +71,55 @@ Pending live checks after deployment:
 - A student on a fresh browser can open the assignment and download/cache its materials.
 - Advanced Manager still opens the existing compatibility manager for duplicate/delete actions.
 - Mobile/tablet wizard layout is usable and no controls overflow.
+
+
+## Phase 7.6 — Song Library
+
+Automated checks already passed:
+- Main JavaScript files parse without syntax errors.
+- Phase 7.6 CSS braces and responsive breakpoints are balanced.
+- The legacy library controls remain mounted but hidden so the existing engine continues working.
+- The new catalogue supports All / Interactive / PDF / Backing / Assigned / Incomplete filters.
+- Search logic correctly filters by song title.
+- Bulk file grouping still groups matching Guitar Pro / PDF / backing-track filenames into one song.
+- Bulk file import now returns an added/skipped/song-count summary for the new UI.
+- Add Song accepts optional Interactive / PDF / MP3-WAV assets and validates file types.
+- Rename and asset replacement use the existing IndexedDB song records.
+- Replacing an interactive score or backing track resets sync points as before.
+- Assigned-song deletion is blocked in the Phase 7.6 UI instead of silently breaking assignment references.
+- Library > Assign passes the selected song into the Phase 7.5 assignment wizard.
+- The Library entry flow asks for a student first, then skips the already-completed Song step.
+- Existing assignment-created and library-changed Google Drive publishing hooks remain intact.
+- Existing teacher Firebase sync and student progress sync remain intact.
+- PDF preview now opens directly from the loaded Blob to reduce popup-blocker problems.
+- Backing-track preview uses an in-page audio player.
+- Save ZIP / Load ZIP backup controls remain available.
+- The earlier Phase 7.3 assignment status, Phase 7.4 profile calculations, and Phase 7.5 assignment API regression checks still pass.
+
+Bugs found and fixed during Phase 7.6 testing:
+- Fixed the mobile song-detail view losing its state after a library refresh.
+- Fixed mobile material action buttons creating an unintended third grid column on small phones.
+- Debounced Library search and restored input focus after re-rendering.
+- Stopped/revoked backing-track preview audio when leaving the Library.
+- Made Library cloud wording reflect only what is actually known: Drive connected vs reconnect required, rather than claiming an upload is definitely complete.
+- Added a warning when an assignment references a song that is missing from the local Library.
+- Removed stale Phase 3 wording from the underlying library/player status text.
+
+Pending live checks:
+- Add a new song through + Add Song and confirm it survives a browser refresh.
+- Add a song with Interactive + PDF + Backing and verify all three appear correctly in Song Details.
+- Drop three matching files such as Song.gp / Song.pdf / Song backing track.mp3 and confirm they group into one song.
+- Test each Library filter and title search with the real local catalogue.
+- Open an interactive score from Song Details and confirm it routes to Practice and loads the correct song.
+- Preview a PDF and confirm browser popup handling is acceptable.
+- Play a backing-track preview and confirm it stops cleanly when leaving Library.
+- Replace Interactive / PDF / Backing assets and confirm the correct files persist after refresh.
+- For an assigned song, replace a material and confirm the existing Google Drive sync republishes it.
+- Library > Assign should open the wizard with the song already selected, then ask for a student.
+- Complete that assignment and confirm the student receives it after Firebase sync.
+- Confirm assigned songs cannot be deleted from the new Library UI.
+- Confirm an unassigned song can be deleted and stays deleted after refresh.
+- Open assigned-student rows in Song Details and confirm each opens the correct student profile.
+- Save ZIP and Load ZIP from the new Library toolbar.
+- Test the catalogue/detail layout on tablet and phone, including the mobile Back to Library button.
+- Confirm Google Drive connected/reconnect wording updates after changing Drive connection state.
