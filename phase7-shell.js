@@ -226,8 +226,13 @@
     let latest=0;
     (list||[]).forEach(a=>{
       const p=a&&a.progress?a.progress:{};
-      const direct=new Date(p.lastPractisedAt||"").getTime();
-      if(Number.isFinite(direct)) latest=Math.max(latest,direct);
+      const hasRecordedActivity=
+        Number(p.lastSessionElapsedMs||0)>0 ||
+        (!p.lastSessionId && Number(p.practiceMs||0)>0);
+      if(hasRecordedActivity){
+        const direct=new Date(p.lastPractisedAt||"").getTime();
+        if(Number.isFinite(direct)) latest=Math.max(latest,direct);
+      }
       const sessions=Array.isArray(p.sessions)?p.sessions:[];
       sessions.forEach(s=>{
         const t=new Date(s.completedAt||"").getTime();
