@@ -11,6 +11,8 @@
   let navButtons = [];
   let mobileButtons = [];
   let selectedTeacherStudentId = "";
+  let assignmentWizard = null;
+  let assignmentWizardSongs = [];
 
   const routes = {
     teacher:[
@@ -124,6 +126,7 @@
         <section id="p7PageStudents" class="p7-page"></section>
         <section id="p7PageStudentProfile" class="p7-page"></section>
         <section id="p7PageAssignments" class="p7-page"></section>
+        <section id="p7PageAssignmentWizard" class="p7-page"></section>
         <section id="p7PageLibrary" class="p7-page"></section>
         <section id="p7PageProgress" class="p7-page"></section>
         <section id="p7PagePractice" class="p7-page p7-practice-page">
@@ -209,8 +212,8 @@
       '<div id="p7StudentDirectory" class="p7-card"></div>';
 
     $("p7PageAssignments").innerHTML=
-      pageHead("Practice planning","Assignments","Create, review and monitor practice assignments without digging through the old sidebar.",
-        '<button id="p7OpenAssignments" class="p7-primary" type="button">Open assignment dashboard</button>')+
+      pageHead("Practice planning","Assignments","Create, review and monitor student practice from one place.",
+        '<button id="p7OpenAssignments" class="p7-primary" type="button">+ New Assignment</button>')+
       '<div id="p7AssignmentOverview" class="p7-card"></div>';
 
     $("p7PageLibrary").insertAdjacentHTML("afterbegin",
@@ -221,7 +224,7 @@
       '<div id="p7ProgressSummary"></div>';
 
     $("p7OpenStudents").onclick=()=>openAssignments("teacher");
-    $("p7OpenAssignments").onclick=()=>openAssignments(session&&session.role==="student"?"student":"teacher");
+    $("p7OpenAssignments").onclick=()=>{ if(session&&session.role==="teacher") openAssignmentWizard(); };
   }
 
   function teacherLastPractice(list){
@@ -489,7 +492,7 @@
 
     $("p74Back").onclick=()=>navigate("students");
     $("p74Manage").onclick=()=>openTeacherAssignmentManager(student.id);
-    $("p74NewAssignment").onclick=()=>openTeacherAssignmentManager(student.id);
+    $("p74NewAssignment").onclick=()=>openAssignmentWizard(student.id);
     page.querySelectorAll("[data-profile-manage]").forEach(b=>b.onclick=()=>openTeacherAssignmentManager(student.id));
 
     const notes=$("p74Notes"), save=$("p74SaveNotes"), noteStatus=$("p74NoteStatus");
@@ -516,6 +519,275 @@
     loadTeacherNote(student.id);
   }
 
+
+  function wizardStudent(){
+    const data=assignmentData();
+    return (data.students||[]).find(s=>assignmentWizard&&s.id===assignmentWizard.studentId)||null;
+  }
+
+  function wizardSong(){
+    return assignmentWizardSongs.find(s=>assignmentWizard&&s.id===assignmentWizard.songId)||null;
+  }
+
+  function wizardFrequencyLabel(period,count){
+    if(period==="day") return count+"× per day";
+    if(period==="week") return count+"× per week";
+    return count+" session"+(count===1?"":"s")+" total";
+  }
+
+  function showAssignmentWizardPage(){
+    currentRoute="assignmentwizard";
+    try{localStorage.setItem(ROUTE_KEY,"assignments");}catch(error){}
+    document.querySelectorAll("#p7Stage > .p7-page").forEach(p=>p.classList.remove("active"));
+    const page=$("p7PageAssignmentWizard");
+    if(page) page.classList.add("active");
+    navButtons.concat(mobileButtons).forEach(b=>b.classList.toggle("active",b.dataset.route==="assignments"));
+  }
+
+  async function loadAssignmentWizardSongs(){
+    try{
+      const api=window.DTMusicTrainerLibrary;
+      const rows=api&&typeof api.getAllSongs==="function" ? await Promise.resolve(api.getAllSongs()) : [];
+      assignmentWizardSongs=Array.isArray(rows)?rows.slice().sort((a,b)=>String(a.title||"").localeCompare(String(b.title||""))):[];
+    }catch(error){
+      console.error("Assignment wizard library load failed",error);
+      assignmentWizardSongs=[];
+    }
+  }
+
+  async function openAssignmentWizard(studentId){
+    if(!session || session.role!=="teacher") return;
+    const data=assignmentData();
+    const students=data.students||[];
+    const preferred=students.find(s=>s.id===studentId) ||
+      students.find(s=>s.id===(window.DTMusicTrainerAssignments&&window.DTMusicTrainerAssignments.getActiveStudent&&window.DTMusicTrainerAssignments.getActiveStudent()||{}).id) ||
+      students[0] || null;
+
+    assignmentWizard={
+      step:studentId&&preferred?2:1,
+      studentId:preferred?preferred.id:"",
+      songId:"",
+      startBar:1,
+      endBar:4,
+      startSpeed:60,
+      targetSpeed:100,
+      increment:5,
+      repsPerStep:3,
+      source:"either",
+      requirementCount:1,
+      requirementPeriod:"day",
+      dueDate:"",
+      note:"",
+      countIn:true,
+      created:null,
+      error:""
+    };
+    assignmentWizardSongs=[];
+    showAssignmentWizardPage();
+    renderAssignmentWizard(true);
+    await loadAssignmentWizardSongs();
+    if(currentRoute==="assignmentwizard") renderAssignmentWizard(false);
+  }
+
+  function wizardStepsHtml(){
+    const current=assignmentWizard?assignmentWizard.step:1;
+    const steps=[["1","Student"],["2","Song"],["3","Practice"],["4","Review"]];
+    return '<div class="p75-steps">'+steps.map((s,i)=>{
+      const n=i+1, cls=current===5?"done":current>n?"done":current===n?"active":"";
+      return '<div class="p75-step '+cls+'"><b>'+(current>n||current===5?"✓":s[0])+'</b><span>'+s[1]+'</span></div>';
+    }).join("")+'</div>';
+  }
+
+  function renderWizardSongChoices(filter){
+    const host=$("p75SongChoices");
+    if(!host) return;
+    const query=String(filter||"").trim().toLowerCase();
+    const rows=assignmentWizardSongs.filter(s=>!query||String(s.title||"").toLowerCase().includes(query));
+    host.innerHTML=rows.map(s=>{
+      const assignable=!!s.interactive;
+      const selected=assignmentWizard&&assignmentWizard.songId===s.id;
+      const badges=[
+        s.interactive?"Interactive ✓":"No interactive score",
+        s.pdf?"PDF ✓":"",
+        s.audio?"Backing ✓":""
+      ].filter(Boolean);
+      return '<button class="p75-song-card '+(selected?"selected ":"")+(assignable?"":"disabled")+'" type="button" '+(assignable?'data-wizard-song="'+escapeHtml(s.id)+'"':'disabled')+'>'+
+        '<div><strong>'+escapeHtml(s.title||"Untitled Song")+'</strong><span>'+badges.map(escapeHtml).join(" · ")+'</span></div>'+
+        '<b class="p75-song-check">'+(selected?"✓":assignable?"›":"—")+'</b></button>';
+    }).join("") || '<div class="p7-empty">No songs match your search.</div>';
+
+    host.querySelectorAll("[data-wizard-song]").forEach(b=>b.onclick=()=>{
+      const song=assignmentWizardSongs.find(s=>s.id===b.dataset.wizardSong);
+      if(!song) return;
+      assignmentWizard.songId=song.id;
+      if(assignmentWizard.source==="backing"&&!song.audio) assignmentWizard.source="either";
+      renderWizardSongChoices($("p75SongSearch")?$("p75SongSearch").value:"");
+      const next=$("p75WizardNext"); if(next) next.disabled=false;
+    });
+  }
+
+  function readWizardPracticeForm(){
+    const num=(id,fallback,min,max)=>{
+      const el=$(id), raw=Math.round(Number(el&&el.value));
+      return Math.max(min,Math.min(max,Number.isFinite(raw)?raw:fallback));
+    };
+    let start=num("p75StartBar",1,1,9999);
+    let end=num("p75EndBar",start,1,9999);
+    if(end<start) [start,end]=[end,start];
+    assignmentWizard.startBar=start;
+    assignmentWizard.endBar=end;
+    assignmentWizard.startSpeed=num("p75StartSpeed",60,25,150);
+    assignmentWizard.targetSpeed=Math.max(assignmentWizard.startSpeed,num("p75TargetSpeed",100,25,150));
+    assignmentWizard.increment=num("p75Increment",5,1,25);
+    assignmentWizard.repsPerStep=num("p75Reps",3,1,20);
+    assignmentWizard.requirementCount=num("p75RequirementCount",1,1,20);
+    assignmentWizard.requirementPeriod=$("p75RequirementPeriod")?$("p75RequirementPeriod").value:"day";
+    if(!["day","week","total"].includes(assignmentWizard.requirementPeriod)) assignmentWizard.requirementPeriod="day";
+    assignmentWizard.source=$("p75Source")?$("p75Source").value:"either";
+    if(!["either","synth","backing"].includes(assignmentWizard.source)) assignmentWizard.source="either";
+    assignmentWizard.dueDate=$("p75DueDate")?$("p75DueDate").value:"";
+    assignmentWizard.note=String($("p75Note")?$("p75Note").value:"").trim().slice(0,2000);
+    assignmentWizard.countIn=!!($("p75CountIn")&&$("p75CountIn").checked);
+  }
+
+  function renderAssignmentWizard(loading){
+    const page=$("p7PageAssignmentWizard");
+    if(!page || !assignmentWizard) return;
+    const data=assignmentData();
+    const students=data.students||[];
+    const student=wizardStudent();
+    const song=wizardSong();
+    const step=assignmentWizard.step;
+
+    if(step===5 && assignmentWizard.created){
+      page.innerHTML=
+        '<div class="p75-wizard-shell"><button id="p75Cancel" class="p74-back" type="button">← Assignments</button>'+
+        '<div class="p75-success"><div class="p75-success-icon">✓</div><div class="p7-eyebrow">Assignment created</div>'+
+        '<h1>'+escapeHtml(assignmentWizard.created.songTitle||"Assignment")+'</h1>'+
+        '<p>Assigned to '+escapeHtml(student?student.name:"student")+'. The existing cloud sync and Google Drive material workflow will take it from here.</p>'+
+        '<div class="p75-success-actions"><button id="p75ViewStudent" class="p7-primary" type="button">View Student Profile</button>'+
+        '<button id="p75Another" class="p7-secondary" type="button">Create Another</button></div></div></div>';
+      $("p75Cancel").onclick=()=>navigate("assignments");
+      $("p75ViewStudent").onclick=()=>student&&openTeacherStudent(student.id);
+      $("p75Another").onclick=()=>openAssignmentWizard(student?student.id:"");
+      return;
+    }
+
+    let body="";
+    if(step===1){
+      body='<div class="p75-step-content"><div class="p75-step-heading"><div class="p7-eyebrow">Step 1 of 4</div><h1>Who is this for?</h1><p>Choose the student receiving this assignment.</p></div>'+
+        '<div class="p75-student-grid">'+students.map(s=>'<button class="p75-student-card '+(assignmentWizard.studentId===s.id?"selected":"")+'" data-wizard-student="'+escapeHtml(s.id)+'" type="button">'+
+          '<div class="p7-teacher-student-avatar">'+escapeHtml((s.name||"S").trim().charAt(0).toUpperCase())+'</div><strong>'+escapeHtml(s.name||"Student")+'</strong><span>'+(assignmentWizard.studentId===s.id?"Selected":"Choose student")+'</span></button>').join("")+
+        (students.length?"":'<div class="p7-empty">No students yet. Add a student first.</div>')+'</div></div>';
+    }else if(step===2){
+      body='<div class="p75-step-content"><div class="p75-step-heading"><div class="p7-eyebrow">Step 2 of 4</div><h1>Choose a song</h1><p>'+(student?"For "+escapeHtml(student.name)+". ":"")+'Only songs with an interactive score can be assigned for guided practice.</p></div>'+
+        '<input id="p75SongSearch" class="p75-search" type="search" placeholder="Search song library…" />'+
+        '<div id="p75SongChoices" class="p75-song-list">'+(loading?'<div class="p7-empty">Loading song library…</div>':'')+'</div>'+
+        (!loading&&!assignmentWizardSongs.length?'<button id="p75GoLibrary" class="p7-secondary" type="button">Go to Song Library</button>':'')+'</div>';
+    }else if(step===3){
+      const hasBacking=!!(song&&song.audio);
+      body='<div class="p75-step-content"><div class="p75-step-heading"><div class="p7-eyebrow">Step 3 of 4</div><h1>Set the practice goal</h1><p>'+escapeHtml(song?song.title:"Song")+' for '+escapeHtml(student?student.name:"student")+'.</p></div>'+
+        '<div class="p75-form">'+
+          '<div class="p75-form-section"><h3>Section</h3><div class="p75-form-grid two">'+
+            '<label>Start bar<input id="p75StartBar" type="number" min="1" value="'+assignmentWizard.startBar+'"></label>'+
+            '<label>End bar<input id="p75EndBar" type="number" min="1" value="'+assignmentWizard.endBar+'"></label></div></div>'+
+          '<div class="p75-form-section"><h3>Speed progression</h3><div class="p75-form-grid three">'+
+            '<label>Start %<input id="p75StartSpeed" type="number" min="25" max="150" value="'+assignmentWizard.startSpeed+'"></label>'+
+            '<label>Target %<input id="p75TargetSpeed" type="number" min="25" max="150" value="'+assignmentWizard.targetSpeed+'"></label>'+
+            '<label>Increase %<input id="p75Increment" type="number" min="1" max="25" value="'+assignmentWizard.increment+'"></label></div>'+
+            '<div class="p75-form-grid two"><label>Reps before increase<input id="p75Reps" type="number" min="1" max="20" value="'+assignmentWizard.repsPerStep+'"></label>'+
+            '<label>Player<select id="p75Source"><option value="either" '+(assignmentWizard.source==="either"?"selected":"")+'>Student choice</option><option value="synth" '+(assignmentWizard.source==="synth"?"selected":"")+'>Synth</option><option value="backing" '+(assignmentWizard.source==="backing"?"selected":"")+' '+(hasBacking?"":"disabled")+'>Synced backing'+(hasBacking?"":" — unavailable")+'</option></select></label></div></div>'+
+          '<div class="p75-form-section"><h3>Practice requirement</h3><div class="p75-form-grid two">'+
+            '<label>Required<input id="p75RequirementCount" type="number" min="1" max="20" value="'+assignmentWizard.requirementCount+'"></label>'+
+            '<label>Frequency<select id="p75RequirementPeriod"><option value="day" '+(assignmentWizard.requirementPeriod==="day"?"selected":"")+'>Per day</option><option value="week" '+(assignmentWizard.requirementPeriod==="week"?"selected":"")+'>Per week</option><option value="total" '+(assignmentWizard.requirementPeriod==="total"?"selected":"")+'>Total sessions</option></select></label></div>'+
+            '<label class="p75-wide-label">Due date <span>optional</span><input id="p75DueDate" type="date" value="'+escapeHtml(assignmentWizard.dueDate)+'"></label></div>'+
+          '<div class="p75-form-section"><h3>Instructions</h3><label class="p75-wide-label">Teacher note <span>optional</span><textarea id="p75Note" maxlength="2000" placeholder="e.g. Keep the chord changes even and clean.">'+escapeHtml(assignmentWizard.note)+'</textarea></label>'+
+            '<label class="p75-check"><input id="p75CountIn" type="checkbox" '+(assignmentWizard.countIn?"checked":"")+'> Count-in before every repetition</label></div>'+
+        '</div></div>';
+    }else{
+      body='<div class="p75-step-content"><div class="p75-step-heading"><div class="p7-eyebrow">Step 4 of 4</div><h1>Review assignment</h1><p>Check everything before it is sent to the student.</p></div>'+
+        '<div class="p75-review-card"><div class="p75-review-title"><span>Student</span><strong>'+escapeHtml(student?student.name:"—")+'</strong></div>'+
+          '<div class="p75-review-title"><span>Song</span><strong>'+escapeHtml(song?song.title:"—")+'</strong></div>'+
+          '<div class="p75-review-grid">'+
+            '<div><span>Bars</span><strong>'+assignmentWizard.startBar+'–'+assignmentWizard.endBar+'</strong></div>'+
+            '<div><span>Speed</span><strong>'+assignmentWizard.startSpeed+'% → '+assignmentWizard.targetSpeed+'%</strong></div>'+
+            '<div><span>Progression</span><strong>+'+assignmentWizard.increment+'% every '+assignmentWizard.repsPerStep+' reps</strong></div>'+
+            '<div><span>Practice</span><strong>'+escapeHtml(wizardFrequencyLabel(assignmentWizard.requirementPeriod,assignmentWizard.requirementCount))+'</strong></div>'+
+            '<div><span>Player</span><strong>'+escapeHtml(assignmentWizard.source==="either"?"Student choice":assignmentWizard.source==="synth"?"Synth":"Synced backing")+'</strong></div>'+
+            '<div><span>Due</span><strong>'+escapeHtml(assignmentWizard.dueDate||"No due date")+'</strong></div>'+
+          '</div>'+
+          (assignmentWizard.note?'<div class="p75-review-note"><span>Teacher note</span><p>'+escapeHtml(assignmentWizard.note)+'</p></div>':'')+
+          '<div class="p75-review-countin">'+(assignmentWizard.countIn?"✓ Count-in before every repetition":"Count-in disabled")+'</div>'+
+        '</div></div>';
+    }
+
+    page.innerHTML='<div class="p75-wizard-shell">'+
+      '<div class="p75-wizard-top"><button id="p75Cancel" class="p74-back" type="button">← Assignments</button><div><div class="p7-eyebrow">Phase 7.5</div><strong>New Assignment</strong></div></div>'+
+      wizardStepsHtml()+
+      (assignmentWizard.error?'<div class="p75-error">'+escapeHtml(assignmentWizard.error)+'</div>':'')+
+      body+
+      '<div class="p75-wizard-actions"><button id="p75WizardBack" class="p7-secondary" type="button" '+(step===1?"disabled":"")+'>Back</button>'+
+      (step===4?'<button id="p75WizardAssign" class="p7-primary" type="button">Assign to Student</button>':'<button id="p75WizardNext" class="p7-primary" type="button">Continue</button>')+'</div></div>';
+
+    $("p75Cancel").onclick=()=>navigate("assignments");
+    const back=$("p75WizardBack");
+    if(back) back.onclick=()=>{ if(step===3) readWizardPracticeForm(); assignmentWizard.error=""; assignmentWizard.step=Math.max(1,step-1); renderAssignmentWizard(false); };
+
+    if(step===1){
+      page.querySelectorAll("[data-wizard-student]").forEach(b=>b.onclick=()=>{
+        assignmentWizard.studentId=b.dataset.wizardStudent;
+        renderAssignmentWizard(false);
+      });
+      const next=$("p75WizardNext");
+      if(next){ next.disabled=!assignmentWizard.studentId; next.onclick=()=>{ if(!assignmentWizard.studentId)return; assignmentWizard.step=2; renderAssignmentWizard(false); renderWizardSongChoices(""); }; }
+    }else if(step===2){
+      const search=$("p75SongSearch");
+      if(search) search.addEventListener("input",()=>renderWizardSongChoices(search.value));
+      renderWizardSongChoices("");
+      const lib=$("p75GoLibrary"); if(lib) lib.onclick=()=>navigate("library");
+      const next=$("p75WizardNext");
+      if(next){ next.disabled=!assignmentWizard.songId; next.onclick=()=>{ if(!assignmentWizard.songId)return; assignmentWizard.step=3; renderAssignmentWizard(false); }; }
+    }else if(step===3){
+      const next=$("p75WizardNext");
+      if(next) next.onclick=()=>{ readWizardPracticeForm(); assignmentWizard.error=""; assignmentWizard.step=4; renderAssignmentWizard(false); };
+    }else if(step===4){
+      const assign=$("p75WizardAssign");
+      if(assign) assign.onclick=()=>{
+        assignmentWizard.error="";
+        assign.disabled=true;
+        assign.textContent="Assigning…";
+        try{
+          const api=window.DTMusicTrainerAssignments;
+          if(!api||typeof api.createAssignment!=="function") throw new Error("Assignment system is not ready.");
+          const selectedSong=wizardSong();
+          const created=api.createAssignment({
+            studentId:assignmentWizard.studentId,
+            songId:assignmentWizard.songId,
+            songTitle:selectedSong&&selectedSong.title,
+            startBar:assignmentWizard.startBar,
+            endBar:assignmentWizard.endBar,
+            startSpeed:assignmentWizard.startSpeed,
+            targetSpeed:assignmentWizard.targetSpeed,
+            increment:assignmentWizard.increment,
+            repsPerStep:assignmentWizard.repsPerStep,
+            source:assignmentWizard.source,
+            requirementCount:assignmentWizard.requirementCount,
+            requirementPeriod:assignmentWizard.requirementPeriod,
+            dueDate:assignmentWizard.dueDate,
+            note:assignmentWizard.note,
+            countIn:assignmentWizard.countIn
+          });
+          assignmentWizard.created=created;
+          assignmentWizard.step=5;
+          renderAssignmentWizard(false);
+        }catch(error){
+          console.error("Assignment wizard create failed",error);
+          assignmentWizard.error=error&&error.message?error.message:"Could not create assignment.";
+          renderAssignmentWizard(false);
+        }
+      };
+    }
+  }
 
   function renderTeacherDashboard(){
     const data=assignmentData();
@@ -618,11 +890,11 @@
         '</div></section>'+
       '</div>';
 
-    const assign=$("p7DashAssign"); if(assign) assign.onclick=()=>openAssignments("teacher");
+    const assign=$("p7DashAssign"); if(assign) assign.onclick=()=>openAssignmentWizard();
     const allStudents=$("p7TeacherAllStudents"); if(allStudents) allStudents.onclick=()=>navigate("students");
     $("p7PageDashboard").querySelectorAll("[data-p7-go]").forEach(b=>b.onclick=()=>navigate(b.dataset.p7Go));
     $("p7PageDashboard").querySelectorAll("[data-teacher-student]").forEach(b=>b.onclick=()=>openTeacherStudent(b.dataset.teacherStudent));
-    const quick=$("p7PageDashboard").querySelector("[data-p7-open-assign]"); if(quick) quick.onclick=()=>openAssignments("teacher");
+    const quick=$("p7PageDashboard").querySelector("[data-p7-open-assign]"); if(quick) quick.onclick=()=>openAssignmentWizard();
   }
 
   function studentAssignmentList(){
@@ -823,13 +1095,47 @@
 
   function renderAssignmentsOverview(){
     const studentMode=!!(session&&session.role==="student");
+    const assignmentHeaderButton=$("p7OpenAssignments");
+    if(assignmentHeaderButton) assignmentHeaderButton.hidden=studentMode;
     if(!studentMode){
-      const list=assignmentData().assignments||[];
-      const rows=list.slice(0,10).map(a=>{
-        const p=a.progress||{};
-        return '<div class="p7-list-row"><div class="p7-list-main"><div class="p7-list-title">'+escapeHtml(a.songTitle||"Assignment")+'</div><div class="p7-list-meta">'+(a.dueDate?"Due "+a.dueDate+" · ":"")+(p.highestSpeed?("Highest "+p.highestSpeed+"%"):"Not practised yet")+'</div></div><span class="p7-badge '+(isCompleted(a)?"ok":"")+'">'+(isCompleted(a)?"Completed":"Active")+'</span></div>';
+      const data=assignmentData();
+      const students=data.students||[];
+      const studentMap=new Map(students.map(s=>[s.id,s]));
+      const list=(data.assignments||[]).slice().sort((a,b)=>{
+        const ac=isCompleted(a)?1:0, bc=isCompleted(b)?1:0;
+        if(ac!==bc) return ac-bc;
+        return String(a.dueDate||"9999-12-31").localeCompare(String(b.dueDate||"9999-12-31"));
+      });
+      const active=list.filter(a=>!isCompleted(a));
+      const overdue=active.filter(teacherIsOverdue);
+      const completed=list.filter(isCompleted);
+
+      const rows=list.map(a=>{
+        const p=a.progress||{}, who=studentMap.get(a.studentId), status=assignmentStatus(a);
+        const detail=[];
+        if(a.dueDate) detail.push(dueLabel(a));
+        if(Number(p.highestSpeed)) detail.push("Best "+Number(p.highestSpeed)+"%");
+        else detail.push("No speed recorded");
+        return '<div class="p75-assignment-row">'+
+          '<button class="p75-assignment-main" data-assignment-student="'+escapeHtml(a.studentId)+'" type="button"><div class="p7-list-main"><div class="p7-list-title">'+escapeHtml(a.songTitle||"Assignment")+'</div>'+
+          '<div class="p7-list-meta">'+escapeHtml((who&&who.name)||"Student")+' · '+escapeHtml(detail.join(" · "))+'</div></div></button>'+
+          '<span class="p7-attention-pill '+(status==="Completed"?"ok":status==="Overdue"?"danger":"")+'">'+escapeHtml(status)+'</span>'+
+          '<button class="p7-secondary p75-manage-btn" data-assignment-manage="'+escapeHtml(a.studentId)+'" type="button">Manage</button></div>';
       }).join("");
-      $("p7AssignmentOverview").innerHTML='<div class="p7-card-title">Assignment overview</div><div class="p7-card-sub">The teacher assignment workflow will be redesigned in Phase 7.5.</div><div class="p7-list">'+(rows||'<div class="p7-empty">No assignments yet.</div>')+'</div>';
+
+      const button=$("p7OpenAssignments"); if(button){button.hidden=false;button.textContent="+ New Assignment";}
+      $("p7AssignmentOverview").innerHTML=
+        '<div class="p75-assignment-summary">'+
+          '<div><strong>'+active.length+'</strong><span>Active</span></div>'+
+          '<div><strong>'+overdue.length+'</strong><span>Overdue</span></div>'+
+          '<div><strong>'+completed.length+'</strong><span>Completed</span></div>'+
+          '<button id="p75AdvancedManager" class="p7-secondary" type="button">Advanced Manager</button></div>'+
+        '<div class="p7-card-heading"><div><div class="p7-card-title">All assignments</div><div class="p7-card-sub">Create new work with the guided wizard. The Advanced Manager remains available for duplicate/delete actions.</div></div><span class="p7-count-chip">'+list.length+'</span></div>'+
+        '<div class="p75-assignment-list">'+(rows||'<div class="p7-empty">No assignments yet. Create your first one.</div>')+'</div>';
+
+      $("p7AssignmentOverview").querySelectorAll("[data-assignment-student]").forEach(b=>b.onclick=()=>openTeacherStudent(b.dataset.assignmentStudent));
+      $("p7AssignmentOverview").querySelectorAll("[data-assignment-manage]").forEach(b=>b.onclick=()=>openTeacherAssignmentManager(b.dataset.assignmentManage));
+      const advanced=$("p75AdvancedManager"); if(advanced) advanced.onclick=()=>openAssignments("teacher");
       return;
     }
 
@@ -1026,7 +1332,6 @@
     if(route==="assignments") renderAssignmentsOverview();
     if(route==="progress") renderProgress();
 
-    if(route==="assignments" && session.role==="teacher") setTimeout(()=>openAssignments("teacher"),80);
     if(route==="practice" && session.role==="student") updateStudentPracticeGuide({});
   }
 
@@ -1036,7 +1341,7 @@
     buildNav();
 
     const sub=document.querySelector(".topbar .sub");
-    if(sub) sub.textContent=session.role==="teacher"?"Phase 7.4 · Student Profiles":"Phase 7.2 · Student Experience";
+    if(sub) sub.textContent=session.role==="teacher"?"Phase 7.5 · Assignment Wizard":"Phase 7.2 · Student Experience";
 
     let desired="";
     try{desired=localStorage.getItem(ROUTE_KEY)||"";}catch(error){}
