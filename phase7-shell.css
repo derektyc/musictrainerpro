@@ -1125,8 +1125,7 @@ body.role-student .p77-guided-hint[hidden]{display:none!important}
 }
 @media(max-width:520px){
   .p77-score-actions{gap:4px}
-  #p77OpenPdf{display:none}
-  .p77-score-song strong{max-width:48vw}
+  .p77-score-song strong{max-width:43vw}
   .p77-sliders{grid-template-columns:1fr}
   .p77-zoom-control{display:none!important}
   .p77-control-dock{padding-bottom:5px}
