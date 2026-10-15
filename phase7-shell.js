@@ -497,7 +497,7 @@
 
     const del=$("p76DeleteSong"); if(del&&selected&&!related.length) del.onclick=async()=>{
       if(!confirm('Delete "'+(selected.title||"this song")+'" and its attached local files?')) return;
-      try{await api.deleteSong(selected.id);libraryState.selectedId="";libraryState.message="Song deleted.";await renderLibraryPage();}
+      try{await api.deleteSong(selected.id);libraryState.selectedId="";libraryState.detailOpen=false;libraryState.message="Song deleted.";await renderLibraryPage();}
       catch(error){setLibraryMessage(error.message||"Could not delete song.");}
     };
 
@@ -731,6 +731,7 @@
   }
 
   function openTeacherStudent(studentId){
+    revokeLibraryAudio();
     if(!session || session.role!=="teacher") return;
     const data=assignmentData();
     if(!(data.students||[]).some(s=>s.id===studentId)){
@@ -883,6 +884,7 @@
   }
 
   function showAssignmentWizardPage(){
+    revokeLibraryAudio();
     currentRoute="assignmentwizard";
     try{localStorage.setItem(ROUTE_KEY,"assignments");}catch(error){}
     document.querySelectorAll("#p7Stage > .p7-page").forEach(p=>p.classList.remove("active"));
