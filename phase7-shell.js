@@ -740,11 +740,11 @@
       if(next){ next.disabled=!assignmentWizard.studentId; next.onclick=()=>{ if(!assignmentWizard.studentId)return; assignmentWizard.step=2; renderAssignmentWizard(false); renderWizardSongChoices(""); }; }
     }else if(step===2){
       const search=$("p75SongSearch");
-      if(search) search.addEventListener("input",()=>renderWizardSongChoices(search.value));
-      renderWizardSongChoices("");
+      if(search) search.addEventListener("input",()=>{ if(!loading) renderWizardSongChoices(search.value); });
+      if(!loading) renderWizardSongChoices("");
       const lib=$("p75GoLibrary"); if(lib) lib.onclick=()=>navigate("library");
       const next=$("p75WizardNext");
-      if(next){ next.disabled=!assignmentWizard.songId; next.onclick=()=>{ if(!assignmentWizard.songId)return; assignmentWizard.step=3; renderAssignmentWizard(false); }; }
+      if(next){ next.disabled=loading||!assignmentWizard.songId; next.onclick=()=>{ if(loading||!assignmentWizard.songId)return; assignmentWizard.step=3; renderAssignmentWizard(false); }; }
     }else if(step===3){
       const next=$("p75WizardNext");
       if(next) next.onclick=()=>{ readWizardPracticeForm(); assignmentWizard.error=""; assignmentWizard.step=4; renderAssignmentWizard(false); };
