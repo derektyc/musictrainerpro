@@ -960,7 +960,7 @@ body.role-student .p7-practice-main .viewer-head{padding:8px 11px}
   .p76-detail-actions{display:grid;grid-template-columns:1fr 1fr}
   .p76-detail-actions button{width:100%}
   .p76-asset-row{grid-template-columns:30px minmax(0,1fr)}
-  .p76-asset-row button{grid-column:auto}
+  .p76-asset-row button,.p76-asset-row button+button{grid-column:auto}
   .p76-asset-row .p7-secondary{width:100%}
   .p76-add-dialog{padding:14px}
 }
