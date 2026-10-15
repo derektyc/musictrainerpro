@@ -51,6 +51,10 @@ service cloud.firestore {
         allow read: if activeUser() && me().data.academyId == academyId;
         allow create, update, delete: if teacherFor(academyId);
       }
+
+      match /teacherNotes/{studentId} {
+        allow read, create, update, delete: if teacherFor(academyId);
+      }
     }
 
     match /users/{uid} {
