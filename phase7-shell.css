@@ -1366,6 +1366,7 @@ body.p7-ready .auth-account-btn{
       max(14px,env(safe-area-inset-left,0px))
   }
   .auth-card,.auth-panel-shell{max-height:calc(100dvh - 28px)}
+  .auth-card{overflow:auto}
   .auth-panel-shell{overflow:hidden}
   .auth-view input,.auth-panel-body input,.auth-panel-body select{font-size:16px}
   .auth-account-btn,.auth-primary,.auth-danger,.auth-row-actions button{min-height:40px}
