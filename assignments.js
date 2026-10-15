@@ -763,7 +763,14 @@
   function recordCompletedSession(a,p,detail){
     const id = detail.sessionId || ("session-" + Date.now());
     if(p.sessions.some(s => s.id === id)) return false;
-    p.sessions.push({id,completedAt:new Date().toISOString()});
+    p.sessions.push({
+      id,
+      completedAt:new Date().toISOString(),
+      practiceMs:Math.max(0,Number(detail.elapsedMs)||0),
+      highestSpeed:Math.max(0,Number(detail.currentSpeed)||0),
+      reps:Math.max(0,Number(detail.totalReps)||0),
+      source:detail.source || ""
+    });
     return true;
   }
 
