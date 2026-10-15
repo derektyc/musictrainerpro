@@ -1139,3 +1139,217 @@ body.role-student .p77-guided-hint[hidden]{display:none!important}
 .p77-practice-progress i{
   display:block;height:100%;width:0;background:var(--p7-accent);transition:width .18s ease
 }
+
+
+/* ==========================================
+   PHASE 7.8 · FINAL RESPONSIVE POLISH
+========================================== */
+
+/* Final shell sizing and overflow hardening */
+html,body{max-width:100%;overflow-x:hidden}
+body.p7-ready .app{height:100dvh;min-height:100dvh}
+#p7Shell,#p7Stage,.p7-page,.p7-card,
+.p7-grid,.p7-metrics,.p7-list-main,
+.p74-profile-grid,.p75-wizard-shell,.p76-library-layout,
+.p77-engine-host,.p77-control-dock{min-width:0}
+#p7PageDashboard,#p7PageStudents,#p7PageAssignments{max-width:1440px;margin-left:auto;margin-right:auto}
+.p7-copy,.p7-card-sub,.p7-list-meta,.p74-teacher-note-inline,
+.p75-review-note p,.p76-danger-zone span,.p76-cloud-card p{
+  overflow-wrap:anywhere
+}
+#p7Shell audio{max-width:100%}
+
+/* Consistent keyboard focus without changing mouse/touch appearance */
+#p7Shell button:focus-visible,
+#p7Shell input:focus-visible,
+#p7Shell select:focus-visible,
+#p7Shell textarea:focus-visible,
+body.p7-ready .auth-account-btn:focus-visible{
+  outline:2px solid var(--p7-accent);
+  outline-offset:2px
+}
+.p7-nav-button[aria-current="page"]{background:var(--p7-accent-soft);color:var(--p7-accent)}
+#p7Shell button{touch-action:manipulation}
+#p7Shell button:disabled{cursor:not-allowed}
+
+/* Keep account controls usable when names/emails are long */
+body.p7-ready .auth-topbar-wrap{min-width:0}
+body.p7-ready .auth-account-btn{
+  max-width:min(46vw,320px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap
+}
+
+/* Cleaner final page rhythm */
+.p7-head>div:first-child{min-width:0}
+.p7-head-actions{align-items:center}
+.p7-card,.p7-metric,.p74-assignment-card,.p75-step-content,
+.p76-catalog,.p76-detail-panel{box-shadow:none}
+
+/* Better tablet shell: move to bottom navigation before the sidebar becomes cramped */
+@media(max-width:900px){
+  body.p7-ready .app{height:100dvh;min-height:100dvh;overflow:hidden}
+  body.p7-ready .topbar{
+    min-height:calc(52px + env(safe-area-inset-top,0px));
+    padding-top:env(safe-area-inset-top,0px);
+    padding-left:max(10px,env(safe-area-inset-left,0px));
+    padding-right:max(10px,env(safe-area-inset-right,0px))
+  }
+  body.p7-ready .topbar .brand-wrap{display:none}
+  body.p7-ready .status-pill{max-width:42vw}
+  body.p7-ready .auth-account-btn{max-width:52vw}
+
+  #p7Shell{
+    display:block;position:relative;
+    height:calc(100dvh - 52px - env(safe-area-inset-top,0px))
+  }
+  .p7-side{display:none}
+  .p7-stage{
+    height:calc(100% - 64px - env(safe-area-inset-bottom,0px));
+    padding-bottom:0;overflow:hidden
+  }
+  .p7-page{
+    padding:18px max(13px,env(safe-area-inset-right,0px)) 26px max(13px,env(safe-area-inset-left,0px));
+    min-height:100%;height:100%;overflow:auto;overscroll-behavior-y:contain
+  }
+  .p7-page.p7-practice-page.active{height:100%;padding:0;overflow:hidden}
+
+  .p7-mobile-nav{
+    display:grid;position:absolute;z-index:80;left:0;right:0;bottom:0;
+    height:calc(64px + env(safe-area-inset-bottom,0px));
+    padding-bottom:env(safe-area-inset-bottom,0px);
+    padding-left:env(safe-area-inset-left,0px);
+    padding-right:env(safe-area-inset-right,0px);
+    grid-template-columns:repeat(5,minmax(0,1fr));
+    background:rgba(28,28,29,.98);border-top:1px solid #3a3a3c;
+    backdrop-filter:blur(14px)
+  }
+  body.role-student .p7-mobile-nav{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .p7-mobile-nav .p7-nav-button{
+    min-width:0;min-height:58px;border-radius:0;padding:6px 2px;gap:2px;
+    flex-direction:column;justify-content:center;text-align:center;font-size:8px
+  }
+  .p7-mobile-nav .p7-nav-icon{width:24px;height:24px;background:transparent}
+
+  .p7-head{margin-bottom:17px;gap:12px}
+  .p7-title{font-size:22px}
+  .p7-copy{font-size:11px}
+  .p7-head-actions{width:100%}
+  .p7-metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .p7-metric{padding:13px}
+  .p7-metric-value{font-size:22px}
+  .p7-grid,.p7-tool-grid{grid-template-columns:1fr}
+
+  /* Prevent iOS/phone form zoom and make editing comfortable. */
+  #p7Shell input,
+  #p7Shell select,
+  #p7Shell textarea{font-size:16px!important}
+  #p7Shell input[type="range"]{font-size:initial!important}
+
+  .p7-primary,.p7-secondary,.p74-back,
+  .p75-wizard-actions button,.p76-toolbar-actions button{
+    min-height:40px
+  }
+
+  /* Practice remains full-height and touchable with bottom navigation present. */
+  .p7-practice-body{height:100%;grid-template-columns:1fr!important}
+  .p7-practice-main{height:100%}
+  .p77-control{min-height:40px}
+  #p7PagePractice.p77-tools-open .p7-practice-tools{
+    display:block!important;position:absolute;z-index:70;top:40px;right:0;bottom:0;
+    width:min(360px,94vw);box-sizing:border-box;
+    padding-right:max(10px,env(safe-area-inset-right,0px));
+    box-shadow:-20px 0 50px rgba(0,0,0,.42)
+  }
+  body.role-student #p7PagePractice.p77-tools-open .p7-practice-tools{display:none!important}
+
+  /* Modals respect notches and home indicators. */
+  .p76-overlay,.p7-completion-overlay{
+    padding:
+      max(14px,env(safe-area-inset-top,0px))
+      max(14px,env(safe-area-inset-right,0px))
+      max(14px,env(safe-area-inset-bottom,0px))
+      max(14px,env(safe-area-inset-left,0px))
+  }
+  .p76-add-dialog,.p7-completion-card{max-height:calc(100dvh - 32px);overflow:auto}
+}
+
+/* Phone layout: actions stack before content becomes cramped. */
+@media(max-width:620px){
+  .p7-head{flex-direction:column}
+  .p7-head-actions{display:grid;grid-template-columns:1fr;width:100%}
+  .p7-head-actions>.p7-primary,
+  .p7-head-actions>.p7-secondary{width:100%}
+
+  .p7-student-welcome{gap:10px}
+  .p7-student-welcome p{line-height:1.45}
+  .p7-today-top{gap:9px}
+  .p7-assignment-specs{gap:5px}
+
+  .p74-profile-actions{width:100%}
+  .p74-profile-actions .p7-primary,
+  .p74-profile-actions .p7-secondary{min-height:42px}
+
+  .p75-step-content{border-radius:14px}
+  .p75-wizard-actions button{min-height:44px}
+
+  .p76-health{gap:7px}
+  .p76-filters{overflow-x:auto;flex-wrap:nowrap;padding-bottom:3px;scrollbar-width:none}
+  .p76-filters::-webkit-scrollbar{display:none}
+  .p76-filters button{flex:0 0 auto;min-height:34px}
+  .p76-toolbar-actions button{min-height:40px}
+
+  .p77-score-header{gap:7px}
+  .p77-source-switch button,.p77-small-control{min-height:34px}
+  .p77-control{min-height:42px}
+}
+
+/* Very small phones: preserve information without horizontal overflow. */
+@media(max-width:420px){
+  .p7-page{padding-left:max(10px,env(safe-area-inset-left,0px));padding-right:max(10px,env(safe-area-inset-right,0px))}
+  .p7-title{font-size:21px}
+  .p7-metric{padding:11px}
+  .p7-metric-value{font-size:20px}
+  .p7-metric-foot{font-size:8px}
+
+  .p7-student-welcome{align-items:center}
+  .p7-streak-pill{padding:6px 8px}
+  .p7-today-card{padding:14px}
+  .p7-today-title{font-size:16px}
+
+  .p74-profile-heading h1{font-size:20px}
+  .p74-profile-actions{display:grid;grid-template-columns:1fr}
+  .p74-profile-actions .p7-primary,
+  .p74-profile-actions .p7-secondary{width:100%}
+
+  .p75-review-title{align-items:flex-start}
+  .p75-review-title strong{max-width:62%;overflow-wrap:anywhere}
+  .p75-wizard-actions{grid-template-columns:1fr 1fr}
+
+  .p76-stats{gap:7px}
+  .p76-detail-top h2{font-size:18px}
+  .p76-detail-actions{grid-template-columns:1fr 1fr}
+
+  body.role-teacher .p77-page-title{display:none}
+  .p7-practice-top-actions{width:100%;justify-content:flex-end}
+  .p77-score-song strong{max-width:40vw}
+}
+
+/* Short landscape screens: reclaim score height without removing functionality. */
+@media(max-height:620px) and (orientation:landscape){
+  .p7-practice-top{padding-top:5px;padding-bottom:5px}
+  .p77-score-header{min-height:42px;padding-top:5px;padding-bottom:5px}
+  .p77-control-dock{padding-top:5px;padding-bottom:5px}
+  .p77-control{height:36px;min-height:36px}
+  .p77-guided-hint{padding:3px 8px}
+}
+
+/* Respect accessibility motion preferences. */
+@media(prefers-reduced-motion:reduce){
+  #p7Shell *,
+  .p76-overlay *,
+  .p7-completion-overlay *{
+    animation-duration:.001ms!important;
+    animation-iteration-count:1!important;
+    transition-duration:.001ms!important;
+    scroll-behavior:auto!important
+  }
+}
