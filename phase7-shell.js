@@ -18,6 +18,8 @@
   let libraryRenderToken = 0;
   let libraryAudioUrl = "";
   let librarySearchTimer = null;
+  let practiceChromeObserver = null;
+  let practiceToolsOpen = false;
 
   const routes = {
     teacher:[
@@ -136,11 +138,11 @@
         <section id="p7PageProgress" class="p7-page"></section>
         <section id="p7PagePractice" class="p7-page p7-practice-page">
           <div class="p7-practice-top">
-            <div><strong id="p7PracticeHeading">Practice</strong><span id="p7PracticeSub">Score & playback</span></div>
+            <div class="p77-page-title"><strong id="p7PracticeHeading">Practice</strong><span id="p7PracticeSub">Score-first practice player</span></div>
             <div class="p7-practice-top-actions">
-              <button id="p7PracticeStart" class="p7-primary" type="button">Start Practice</button>
-              <button id="p7PracticeStop" class="p7-secondary" type="button">Stop</button>
+              <button id="p77PracticeLibrary" class="p7-secondary" type="button">Library</button>
               <button id="p7PracticeAssignments" class="p7-secondary" type="button">Assignments</button>
+              <button id="p77ToolsToggle" class="p7-secondary" type="button">Advanced Tools</button>
             </div>
           </div>
           <div id="p7StudentPracticeGuide" class="p7-student-practice-guide" hidden>
@@ -150,7 +152,40 @@
             <div class="p7-guide-message" id="p7GuideMessage">Press Start Practice when you're ready.</div>
           </div>
           <div class="p7-practice-body">
-            <div id="p7PracticeMain" class="p7-practice-main"></div>
+            <div id="p7PracticeMain" class="p7-practice-main">
+              <div id="p77ScoreHeader" class="p77-score-header">
+                <div class="p77-score-song">
+                  <div class="p7-eyebrow">Now practising</div>
+                  <strong id="p77SongTitle">No score loaded</strong>
+                  <span id="p77SongMeta">Choose a song from Library or an assignment.</span>
+                </div>
+                <div class="p77-score-actions">
+                  <button id="p77OpenPdf" class="p77-small-control" type="button" disabled>PDF</button>
+                  <div class="p77-source-switch">
+                    <button id="p77Synth" type="button">Synth</button>
+                    <button id="p77Backing" type="button" disabled>Backing</button>
+                  </div>
+                </div>
+              </div>
+              <div id="p77EngineHost" class="p77-engine-host"></div>
+              <div id="p77ControlDock" class="p77-control-dock">
+                <div class="p77-transport">
+                  <button id="p77Restart" class="p77-control" type="button" disabled title="Restart">↺<span>Restart</span></button>
+                  <button id="p77Play" class="p77-control p77-play" type="button" disabled title="Play / Pause">▶<span>Play</span></button>
+                  <button id="p77Session" class="p77-control p77-session" type="button" disabled>Start Practice</button>
+                  <button id="p77Loop" class="p77-control" type="button" disabled title="Loop">↻<span>Loop</span></button>
+                </div>
+                <div class="p77-live-info">
+                  <span id="p77Position">00:00 / 00:00</span>
+                  <span id="p77ModePill">Synth</span>
+                </div>
+                <div class="p77-sliders">
+                  <label><span>Speed</span><input id="p77Speed" type="range" min="25" max="150" value="100" disabled><b id="p77SpeedValue">100%</b></label>
+                  <label class="p77-zoom-control"><span>Zoom</span><input id="p77Zoom" type="range" min="50" max="150" step="10" value="100"><b id="p77ZoomValue">100%</b></label>
+                </div>
+              </div>
+              <div id="p77GuidedHint" class="p77-guided-hint" hidden>Guided Practice controls the loop and speed automatically.</div>
+            </div>
             <aside id="p7PracticeTools" class="p7-practice-tools"></aside>
           </div>
         </section>
@@ -170,7 +205,7 @@
     libraryRoot.id="p76LibraryRoot";
     libraryPage.appendChild(libraryRoot);
 
-    $("p7PracticeMain").appendChild(moved.main);
+    $("p77EngineHost").appendChild(moved.main);
 
     // Keep the practice count-in inside the score viewport so the score stays visible.
     const countdown=$("practiceCountdown");
@@ -179,7 +214,7 @@
 
     const tools=$("p7PracticeTools");
     [
-      ["Practice setup",moved.practice,true],
+      ["Practice setup",moved.practice,false],
       ["Loop controls",moved.loop,false],
       ["Score & tracks",moved.scoreInfo,false],
       ["Track controls",moved.tracks,false],
@@ -198,9 +233,16 @@
     document.body.classList.add("p7-ready");
     shellBuilt=true;
 
-    $("p7PracticeAssignments").onclick=()=>openAssignments(session&&session.role==="student"?"student":"teacher");
-    $("p7PracticeStart").onclick=()=>{ const b=$("practiceStartBtn"); if(b && !b.disabled) b.click(); };
-    $("p7PracticeStop").onclick=()=>{ const b=$("practiceStopBtn"); if(b && !b.disabled) b.click(); };
+    $("p7PracticeAssignments").onclick=()=>session&&session.role==="student"?navigate("assignments"):navigate("assignments");
+    $("p77PracticeLibrary").onclick=()=>navigate("library");
+    $("p77ToolsToggle").onclick=()=>{
+      if(!session||session.role!=="teacher")return;
+      practiceToolsOpen=!practiceToolsOpen;
+      const page=$("p7PagePractice");
+      if(page) page.classList.toggle("p77-tools-open",practiceToolsOpen);
+      syncPracticeChrome();
+    };
+    bindPracticeChrome();
     renderStaticPages();
     applySession(authSession());
   }
