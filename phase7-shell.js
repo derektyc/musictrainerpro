@@ -346,7 +346,7 @@
   }
 
   async function loadTeacherNote(studentId){
-    const notes=$("p74Notes"), status=$("p74NoteStatus");
+    const notes=$("p74Notes"), status=$("p74NoteStatus"), save=$("p74SaveNotes");
     if(!notes || !session || session.role!=="teacher" || !session.uid) return;
     const expectedId=studentId;
     try{
@@ -358,6 +358,8 @@
       const data=snap.exists()?snap.data():{};
       const map=data&&data.studentNotes&&typeof data.studentNotes==="object"?data.studentNotes:{};
       notes.value=String(map[expectedId]||"").slice(0,4000);
+      notes.disabled=false;
+      if(save) save.disabled=false;
       if(status) status.textContent=notes.value.length.toLocaleString()+" / 4,000";
     }catch(error){
       console.error("Teacher note load failed",error);
@@ -477,8 +479,8 @@
         '<section class="p7-card p74-active"><div class="p7-card-heading"><div><div class="p7-card-title">Active assignments</div><div class="p7-card-sub">'+active.length+' currently active · Highest speed '+(best?best+"%":"—")+'</div></div><span class="p7-count-chip">'+active.length+'</span></div>'+
           '<div class="p74-assignment-list">'+(activeCards||'<div class="p7-empty">No active assignments.</div>')+'</div></section>'+
         '<aside class="p7-card p74-notes"><div class="p7-card-title">Teacher notes</div><div class="p7-card-sub">Private teacher-only notes. Students cannot see these in their account.</div>'+
-          '<textarea id="p74Notes" maxlength="4000" placeholder="Lesson focus, technique reminders, goals…"></textarea>'+
-          '<div class="p74-note-actions"><span id="p74NoteStatus">Up to 4,000 characters</span><button id="p74SaveNotes" class="p7-primary" type="button">Save Notes</button></div></aside>'+
+          '<textarea id="p74Notes" maxlength="4000" placeholder="Lesson focus, technique reminders, goals…" disabled></textarea>'+
+          '<div class="p74-note-actions"><span id="p74NoteStatus">Loading note…</span><button id="p74SaveNotes" class="p7-primary" type="button" disabled>Save Notes</button></div></aside>'+
         '<section class="p7-card p74-recent"><div class="p7-card-title">Recent practice</div><div class="p7-card-sub">Completed sessions, newest first.</div>'+
           '<div class="p74-session-list">'+(recentRows||'<div class="p7-empty">No completed practice sessions yet.</div>')+'</div></section>'+
         '<section class="p7-card p74-history"><div class="p7-card-heading"><div><div class="p7-card-title">Assignment history</div><div class="p7-card-sub">'+completed.length+' completed · '+assignments.length+' total</div></div></div>'+
