@@ -345,6 +345,39 @@
     openAssignments("teacher");
   }
 
+  async function loadTeacherNote(studentId){
+    const notes=$("p74Notes"), status=$("p74NoteStatus");
+    if(!notes || !session || session.role!=="teacher" || !session.uid) return;
+    const expectedId=studentId;
+    try{
+      const F=window.DTMTPFirebase;
+      if(!F){ if(status) status.textContent="Cloud not ready"; return; }
+      if(status) status.textContent="Loading note…";
+      const snap=await F.getDoc(F.doc(F.db,"users",session.uid));
+      if(selectedTeacherStudentId!==expectedId || currentRoute!=="studentprofile") return;
+      const data=snap.exists()?snap.data():{};
+      const map=data&&data.studentNotes&&typeof data.studentNotes==="object"?data.studentNotes:{};
+      notes.value=String(map[expectedId]||"").slice(0,4000);
+      if(status) status.textContent=notes.value.length.toLocaleString()+" / 4,000";
+    }catch(error){
+      console.error("Teacher note load failed",error);
+      if(status) status.textContent="Could not load note";
+    }
+  }
+
+  async function saveTeacherNote(studentId,text){
+    if(!session || session.role!=="teacher" || !session.uid) return false;
+    const F=window.DTMTPFirebase;
+    if(!F) return false;
+    const ref=F.doc(F.db,"users",session.uid);
+    const snap=await F.getDoc(ref);
+    const current=snap.exists()?snap.data():{};
+    const notes=current&&current.studentNotes&&typeof current.studentNotes==="object"?{...current.studentNotes}:{};
+    notes[studentId]=String(text||"").trim().slice(0,4000);
+    await F.setDoc(ref,{studentNotes:notes,updatedAt:F.serverTimestamp()},{merge:true});
+    return true;
+  }
+
   function openTeacherStudent(studentId){
     if(!session || session.role!=="teacher") return;
     const data=assignmentData();
@@ -443,8 +476,8 @@
       '<div class="p74-profile-grid">'+
         '<section class="p7-card p74-active"><div class="p7-card-heading"><div><div class="p7-card-title">Active assignments</div><div class="p7-card-sub">'+active.length+' currently active · Highest speed '+(best?best+"%":"—")+'</div></div><span class="p7-count-chip">'+active.length+'</span></div>'+
           '<div class="p74-assignment-list">'+(activeCards||'<div class="p7-empty">No active assignments.</div>')+'</div></section>'+
-        '<aside class="p7-card p74-notes"><div class="p7-card-title">Teacher notes</div><div class="p7-card-sub">Private notes for your own reference. These sync with the student record.</div>'+
-          '<textarea id="p74Notes" maxlength="4000" placeholder="Lesson focus, technique reminders, goals…">'+escapeHtml(student.teacherNotes||"")+'</textarea>'+
+        '<aside class="p7-card p74-notes"><div class="p7-card-title">Teacher notes</div><div class="p7-card-sub">Private teacher-only notes. Students cannot see these in their account.</div>'+
+          '<textarea id="p74Notes" maxlength="4000" placeholder="Lesson focus, technique reminders, goals…"></textarea>'+
           '<div class="p74-note-actions"><span id="p74NoteStatus">Up to 4,000 characters</span><button id="p74SaveNotes" class="p7-primary" type="button">Save Notes</button></div></aside>'+
         '<section class="p7-card p74-recent"><div class="p7-card-title">Recent practice</div><div class="p7-card-sub">Completed sessions, newest first.</div>'+
           '<div class="p74-session-list">'+(recentRows||'<div class="p7-empty">No completed practice sessions yet.</div>')+'</div></section>'+
@@ -464,16 +497,21 @@
       });
     }
     if(save){
-      save.onclick=()=>{
+      save.onclick=async()=>{
+        save.disabled=true;
+        if(noteStatus) noteStatus.textContent="Saving…";
         try{
-          const api=window.DTMusicTrainerAssignments;
-          const ok=api&&typeof api.updateStudentNotes==="function"&&api.updateStudentNotes(student.id,notes?notes.value:"");
-          if(noteStatus) noteStatus.textContent=ok?"Saved · syncing to cloud":"Could not save notes";
+          const ok=await saveTeacherNote(student.id,notes?notes.value:"");
+          if(noteStatus) noteStatus.textContent=ok?"Saved to cloud":"Could not save note";
         }catch(error){
-          if(noteStatus) noteStatus.textContent="Could not save notes";
+          console.error("Teacher note save failed",error);
+          if(noteStatus) noteStatus.textContent="Could not save note";
+        }finally{
+          save.disabled=false;
         }
       };
     }
+    loadTeacherNote(student.id);
   }
 
 
@@ -1018,7 +1056,6 @@
 
   window.addEventListener("dtmtp:auth-changed",e=>applySession(e.detail||null));
   window.addEventListener("dtmtp:cloud-data-applied",refreshData);
-  window.addEventListener("dtmtp:student-updated",refreshData);
   window.addEventListener("dtmtp:practice-start",e=>{
     if(session&&session.role==="student"){
       const d=e.detail||{};
