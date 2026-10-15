@@ -458,6 +458,7 @@
     toast(added ? "Library updated." : "No supported files were added.");
     el.fileInput.value = "";
     el.selectedFileInput.value = "";
+    return {added,skipped,songCount:changed.size,changedIds:[...changed]};
   }
 
   async function createSong() {
@@ -1452,10 +1453,128 @@
 
   window.addEventListener("beforeunload", revokeBackingUrl);
 
+  async function createSongWithAssets(input) {
+    const value=input||{};
+    const title=String(value.title||"").trim();
+    if(!title) throw new Error("Enter a song title.");
+
+    const song={
+      id:makeId(),
+      title,
+      createdAt:Date.now(),
+      updatedAt:Date.now(),
+      interactive:null,
+      pdf:null,
+      audio:null,
+      syncPoints:[]
+    };
+
+    const supplied=[
+      ["interactive",value.interactiveFile],
+      ["pdf",value.pdfFile],
+      ["audio",value.audioFile]
+    ];
+    for(const [kind,file] of supplied){
+      if(!file) continue;
+      const actual=classifyFile(file);
+      if(actual!==kind) throw new Error("The selected "+assetLabel(kind).toLowerCase()+" file is not supported.");
+      song[kind]=makeAsset(file);
+    }
+
+    await putSong(song);
+    selectedSongId=song.id;
+    localStorage.setItem("dtmtp-selected-song",song.id);
+    await refreshCache();
+    setStatus("Created "+song.title,"ok");
+    return await getSong(song.id);
+  }
+
+  async function renameSongById(id,title) {
+    const song=await getSong(id);
+    if(!song) throw new Error("Song not found.");
+    const next=String(title||"").trim();
+    if(!next) throw new Error("Enter a song title.");
+    song.title=next;
+    await putSong(song);
+    selectedSongId=song.id;
+    localStorage.setItem("dtmtp-selected-song",song.id);
+    await refreshCache();
+    setStatus("Song renamed.","ok");
+    return await getSong(song.id);
+  }
+
+  async function replaceSongAsset(id,kind,file) {
+    if(!["interactive","pdf","audio"].includes(kind)) throw new Error("Unsupported asset type.");
+    if(!file) throw new Error("Choose a file.");
+    const actual=classifyFile(file);
+    if(actual!==kind) throw new Error("That file is not a supported "+assetLabel(kind).toLowerCase()+".");
+    const song=await getSong(id);
+    if(!song) throw new Error("Song not found.");
+    song[kind]=makeAsset(file);
+    if(kind==="interactive"||kind==="audio") song.syncPoints=[];
+    await putSong(song);
+    selectedSongId=song.id;
+    localStorage.setItem("dtmtp-selected-song",song.id);
+    await refreshCache();
+    setStatus(assetLabel(kind)+" replaced.","ok");
+    return await getSong(song.id);
+  }
+
+  async function deleteSongById(id) {
+    const song=await getSong(id);
+    if(!song) return false;
+    if(activeInteractiveSongId===song.id){
+      try{api.stop();}catch(error){}
+      showEmpty("Interactive Score","Choose another song from the library.");
+    }
+    stopBackingAudio();
+    await removeSong(song.id);
+    if(selectedSongId===song.id){
+      selectedSongId="";
+      localStorage.removeItem("dtmtp-selected-song");
+    }
+    await refreshCache();
+    setStatus("Song deleted.","ok");
+    return true;
+  }
+
+  async function selectSongById(id) {
+    const song=await getSong(id);
+    if(!song) throw new Error("Song not found.");
+    selectSong(id);
+    return song;
+  }
+
+  async function openInteractiveById(id) {
+    await selectSongById(id);
+    return await openSelectedInteractive();
+  }
+
+  async function openPdfById(id) {
+    await selectSongById(id);
+    return await openSelectedPdf();
+  }
+
+  async function playAudioById(id) {
+    await selectSongById(id);
+    return await playSelectedAudio();
+  }
+
   window.DTMusicTrainerLibrary = {
     getSong,
     getAllSongs:allSongs,
-    refresh:refreshCache
+    refresh:refreshCache,
+    getSelectedSongId:()=>selectedSongId,
+    selectSong:selectSongById,
+    addFiles:(files,forceSongId)=>addFilesToLibrary(files,forceSongId||""),
+    createSong:createSongWithAssets,
+    renameSong:renameSongById,
+    replaceAsset:replaceSongAsset,
+    deleteSong:deleteSongById,
+    openInteractive:openInteractiveById,
+    openPdf:openPdfById,
+    playAudio:playAudioById,
+    stopAudio:stopBackingAudio
   };
 
   async function init() {
