@@ -657,7 +657,7 @@
     }
     if (!hasPair) {
       el.syncPointList.innerHTML = '<div class="note">Attach both an interactive score and an MP3/WAV backing track.</div>';
-      el.syncStatus.textContent = "Both files are required for Phase 3 sync.";
+      el.syncStatus.textContent = "Both files are required for backing-track sync.";
       return;
     }
     if (!scoreReady) {
@@ -1582,10 +1582,10 @@
       setStatus("Opening local Pro library…");
       await openDatabase();
       await refreshCache();
-      showEmpty("DT Music Trainer Pro", "Phase 3 is ready. Add an interactive score and backing track, open the score, then choose Synced Backing.");
+      showEmpty("DT Music Trainer Pro", "Choose a song from the Library, then open its interactive score to begin.");
       if (selectedSongId) renderSelectedSong();
       updateSourceUI();
-      setStatus("Phase 3 ready · synced backing available", "ok");
+      setStatus("Library ready · synced backing available", "ok");
     } catch (error) {
       console.error(error);
       setStatus("Could not open local library: " + error.message, "warn");
