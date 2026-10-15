@@ -183,6 +183,7 @@ body.role-student #authAccountBtn{font-size:10px}
     grid-template-columns:repeat(5,minmax(0,1fr));background:rgba(28,28,29,.98);
     border-top:1px solid #3a3a3c;backdrop-filter:blur(14px)
   }
+  body.role-student .p7-mobile-nav{grid-template-columns:repeat(4,minmax(0,1fr))}
   .p7-mobile-nav .p7-nav-button{
     min-width:0;border-radius:0;padding:7px 2px;gap:2px;flex-direction:column;
     justify-content:center;text-align:center;font-size:8px
