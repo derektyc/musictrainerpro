@@ -880,16 +880,18 @@
     }
   }
 
-  async function openAssignmentWizard(studentId){
+  async function openAssignmentWizard(studentId,songId){
     if(!session || session.role!=="teacher") return;
     const data=assignmentData();
     const students=data.students||[];
     const preferred=studentId ? (students.find(s=>s.id===studentId)||null) : null;
+    const preselectedSongId=String(songId||"");
 
     assignmentWizard={
-      step:preferred?2:1,
+      step:preferred&&preselectedSongId?3:preferred?2:1,
+      entry:preselectedSongId&&!preferred?"library":preferred?"profile":"general",
       studentId:preferred?preferred.id:"",
-      songId:"",
+      songId:preselectedSongId,
       startBar:1,
       endBar:4,
       startSpeed:60,
@@ -910,7 +912,18 @@
     showAssignmentWizardPage();
     renderAssignmentWizard(true);
     await loadAssignmentWizardSongs();
-    if(assignmentWizard) assignmentWizard.songsLoading=false;
+    if(assignmentWizard){
+      assignmentWizard.songsLoading=false;
+      if(assignmentWizard.songId){
+        const pre=assignmentWizardSongs.find(s=>s.id===assignmentWizard.songId&&s.interactive);
+        if(!pre){
+          assignmentWizard.songId="";
+          assignmentWizard.entry=preferred?"profile":"general";
+          assignmentWizard.step=preferred?2:1;
+          assignmentWizard.error="That song is no longer available for guided practice.";
+        }
+      }
+    }
     if(currentRoute==="assignmentwizard") renderAssignmentWizard(false);
   }
 
@@ -995,13 +1008,16 @@
         '<button id="p75Another" class="p7-secondary" type="button">Create Another</button></div></div></div>';
       $("p75Cancel").onclick=()=>navigate("assignments");
       $("p75ViewStudent").onclick=()=>student&&openTeacherStudent(student.id);
-      $("p75Another").onclick=()=>openAssignmentWizard(student?student.id:"");
+      $("p75Another").onclick=()=>assignmentWizard.entry==="library"
+        ? openAssignmentWizard("",assignmentWizard.songId)
+        : openAssignmentWizard(student?student.id:"");
       return;
     }
 
     let body="";
     if(step===1){
-      body='<div class="p75-step-content"><div class="p75-step-heading"><div class="p7-eyebrow">Step 1 of 4</div><h1>Who is this for?</h1><p>Choose the student receiving this assignment.</p></div>'+
+      body='<div class="p75-step-content"><div class="p75-step-heading"><div class="p7-eyebrow">Step 1 of 4</div><h1>Who is this for?</h1><p>Choose the student receiving this assignment.'+
+        (assignmentWizard.entry==="library"&&song?' <strong>'+escapeHtml(song.title)+'</strong> is already selected from the Library.':'')+'</p></div>'+
         '<div class="p75-student-grid">'+students.map(s=>'<button class="p75-student-card '+(assignmentWizard.studentId===s.id?"selected":"")+'" data-wizard-student="'+escapeHtml(s.id)+'" type="button">'+
           '<div class="p7-teacher-student-avatar">'+escapeHtml((s.name||"S").trim().charAt(0).toUpperCase())+'</div><strong>'+escapeHtml(s.name||"Student")+'</strong><span>'+(assignmentWizard.studentId===s.id?"Selected":"Choose student")+'</span></button>').join("")+
         (students.length?"":'<div class="p7-empty">No students yet. Add a student first.<br><button id="p75ManageStudents" class="p7-secondary" type="button" style="margin-top:10px">Manage Students</button></div>')+'</div></div>';
@@ -1057,7 +1073,14 @@
 
     $("p75Cancel").onclick=()=>navigate("assignments");
     const back=$("p75WizardBack");
-    if(back) back.onclick=()=>{ if(step===3) readWizardPracticeForm(); assignmentWizard.error=""; assignmentWizard.step=Math.max(1,step-1); renderAssignmentWizard(false); };
+    if(back) back.onclick=()=>{
+      if(step===3) readWizardPracticeForm();
+      assignmentWizard.error="";
+      if(step===3&&assignmentWizard.entry==="library") assignmentWizard.step=1;
+      else assignmentWizard.step=Math.max(1,step-1);
+      renderAssignmentWizard(false);
+      if(assignmentWizard.step===2&&!assignmentWizard.songsLoading) renderWizardSongChoices("");
+    };
 
     if(step===1){
       page.querySelectorAll("[data-wizard-student]").forEach(b=>b.onclick=()=>{
@@ -1066,7 +1089,12 @@
       });
       const manageStudents=$("p75ManageStudents"); if(manageStudents) manageStudents.onclick=()=>openAssignments("teacher");
       const next=$("p75WizardNext");
-      if(next){ next.disabled=!assignmentWizard.studentId; next.onclick=()=>{ if(!assignmentWizard.studentId)return; assignmentWizard.step=2; renderAssignmentWizard(false); renderWizardSongChoices(""); }; }
+      if(next){ next.disabled=!assignmentWizard.studentId; next.onclick=()=>{
+        if(!assignmentWizard.studentId)return;
+        assignmentWizard.step=assignmentWizard.entry==="library"&&assignmentWizard.songId?3:2;
+        renderAssignmentWizard(false);
+        if(assignmentWizard.step===2&&!assignmentWizard.songsLoading) renderWizardSongChoices("");
+      }; }
     }else if(step===2){
       const search=$("p75SongSearch");
       if(search) search.addEventListener("input",()=>{ if(!loading) renderWizardSongChoices(search.value); });
@@ -1657,6 +1685,7 @@
     if(route==="home") renderStudentHome();
     if(route==="students") renderStudents();
     if(route==="assignments") renderAssignmentsOverview();
+    if(route==="library") renderLibraryPage();
     if(route==="progress") renderProgress();
 
     if(route==="practice" && session.role==="student") updateStudentPracticeGuide({});
@@ -1668,7 +1697,7 @@
     buildNav();
 
     const sub=document.querySelector(".topbar .sub");
-    if(sub) sub.textContent=session.role==="teacher"?"Phase 7.5 · Assignment Wizard":"Phase 7.2 · Student Experience";
+    if(sub) sub.textContent=session.role==="teacher"?"Phase 7.6 · Song Library":"Phase 7.2 · Student Experience";
 
     let desired="";
     try{desired=localStorage.getItem(ROUTE_KEY)||"";}catch(error){}
@@ -1685,6 +1714,7 @@
     if(currentRoute==="students") renderStudents();
     if(currentRoute==="studentprofile") renderTeacherStudentProfile();
     if(currentRoute==="assignments") renderAssignmentsOverview();
+    if(currentRoute==="library") renderLibraryPage();
     if(currentRoute==="progress") renderProgress();
   }
 
@@ -1737,6 +1767,9 @@
     }
   });
   window.addEventListener("dtmtp:materials-ready",refreshData);
+  window.addEventListener("dtmtp:library-changed",()=>{
+    if(currentRoute==="library") renderLibraryPage();
+  });
 
   document.addEventListener("DOMContentLoaded",buildShell);
   if(document.readyState!=="loading") setTimeout(buildShell,0);
