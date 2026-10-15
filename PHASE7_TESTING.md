@@ -123,3 +123,46 @@ Pending live checks:
 - Save ZIP and Load ZIP from the new Library toolbar.
 - Test the catalogue/detail layout on tablet and phone, including the mobile Back to Library button.
 - Confirm Google Drive connected/reconnect wording updates after changing Drive connection state.
+
+
+## Phase 7.7 — Practice Player
+
+Automated checks already passed:
+- Existing alphaTab / practice engine remains mounted; Phase 7.7 is a UI layer around the proven controls rather than a replacement engine.
+- The old viewer header and old transport controls remain in the DOM for compatibility but are visually hidden inside the new player.
+- New Play/Pause control proxies the existing playBtn.
+- New Restart control uses Practice Retry during a guided session and normal stop/replay outside guided practice.
+- New Start Practice / Stop Practice button proxies the existing practice engine controls.
+- New Loop control proxies the existing loop engine and is locked while Guided Practice owns the loop.
+- New Speed slider proxies the existing player speed and is locked while Guided Practice owns automatic speed progression.
+- New Zoom slider proxies the existing alphaTab zoom control.
+- Synth / Backing source buttons proxy the existing source controls and are locked during an active guided session.
+- PDF access proxies the existing PDF action.
+- Student practice keeps advanced teacher controls hidden.
+- Teacher Advanced Tools are collapsed by default and open only on request.
+- Teacher Advanced Tools use an overlay drawer on narrow screens instead of disappearing.
+- Guided Practice progress mirrors the existing practice progress bar.
+- Practice state is read from DTMusicTrainerPractice.getState when available instead of relying only on button state.
+- Existing Phase 7.2 completion/progress events remain intact.
+- The top-left, non-blurred count-in remains intact.
+- Phase 7.4 profiles, Phase 7.5 assignment wizard and Phase 7.6 Library remain present.
+- Main JavaScript files and Phase 7 CSS parse/balance checks pass.
+
+Pending live checks:
+- Open an assignment as a student and confirm the correct song title, bars and speed target appear in the new score header.
+- Confirm Start Practice changes to Stop Practice while a guided session is active and changes back afterward.
+- During guided practice, confirm Speed, Loop and Synth/Backing are visually locked while automatic progression is running.
+- Confirm Restart Current Speed resets the rep count and restarts the current guided speed correctly.
+- Confirm Play/Pause can pause and resume a guided repetition without corrupting rep counting.
+- Confirm automatic reps and speed increases still occur normally through a full assignment.
+- Confirm the thin guided-progress line advances correctly and reaches completion.
+- Confirm Synth and Synced Backing both work before starting practice.
+- Confirm backing-track assignments still follow saved sync points in the new player.
+- Confirm PDF opens from the new Practice header.
+- Confirm teacher Library > Open Interactive lands in the new Practice player with the correct score.
+- Confirm Advanced Tools opens/closes correctly on teacher desktop.
+- Confirm Advanced Tools drawer opens/closes correctly on teacher phone/tablet.
+- Confirm students cannot expose Advanced Tools.
+- Confirm the score has materially more usable vertical space than before and no controls cover notation.
+- Confirm count-in still appears at the top-left of the score with no background blur.
+- Confirm tablet/phone controls remain tappable and the score remains scrollable while the bottom navigation is visible.
