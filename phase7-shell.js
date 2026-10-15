@@ -681,7 +681,7 @@
       body='<div class="p75-step-content"><div class="p75-step-heading"><div class="p7-eyebrow">Step 2 of 4</div><h1>Choose a song</h1><p>'+(student?"For "+escapeHtml(student.name)+". ":"")+'Only songs with an interactive score can be assigned for guided practice.</p></div>'+
         '<input id="p75SongSearch" class="p75-search" type="search" placeholder="Search song library…" />'+
         '<div id="p75SongChoices" class="p75-song-list">'+(loading?'<div class="p7-empty">Loading song library…</div>':'')+'</div>'+
-        (!loading&&!assignmentWizardSongs.length?'<button id="p75GoLibrary" class="p7-secondary" type="button">Go to Song Library</button>':'')+'</div>';
+        (!loading&&!assignmentWizardSongs.some(s=>s.interactive)?'<button id="p75GoLibrary" class="p7-secondary" type="button">Go to Song Library</button>':'')+'</div>';
     }else if(step===3){
       const hasBacking=!!(song&&song.audio);
       body='<div class="p75-step-content"><div class="p75-step-heading"><div class="p7-eyebrow">Step 3 of 4</div><h1>Set the practice goal</h1><p>'+escapeHtml(song?song.title:"Song")+' for '+escapeHtml(student?student.name:"student")+'.</p></div>'+
