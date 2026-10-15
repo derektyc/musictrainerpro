@@ -1642,6 +1642,169 @@
       '<div class="p7-card"><div class="p7-card-title">Recent practice</div><div class="p7-card-sub">Your latest completed sessions.</div><div class="p7-progress-history">'+(recent||'<div class="p7-student-empty compact"><span>Complete your first practice session to start your history.</span></div>')+'</div></div></div>';
   }
 
+  function practiceSessionActive(){
+    const section=$("practiceModeSection");
+    const stop=$("practiceStopBtn");
+    return !!((section&&section.classList.contains("practice-session-active"))||(stop&&!stop.disabled));
+  }
+
+  function practiceClick(id){
+    const b=$(id);
+    if(b&&!b.disabled){b.click();return true;}
+    return false;
+  }
+
+  function syncPracticeChrome(){
+    if(!shellBuilt) return;
+    const title=$("p77SongTitle"), meta=$("p77SongMeta");
+    if(!title||!meta) return;
+
+    const active=practiceSessionActive();
+    const assignment=session&&session.role==="student"?activeAssignment():null;
+    const viewerTitle=$("viewerTitle"), viewerMeta=$("viewerMeta");
+    const oldPlay=$("playBtn"), oldLoop=$("loopBtn"), oldSpeed=$("speed"), oldZoom=$("zoom");
+    const start=$("practiceStartBtn"), stop=$("practiceStopBtn"), retry=$("practiceRetryBtn");
+    const synth=$("synthModeBtn"), backing=$("backingModeBtn"), pdf=$("openPdfBtn");
+
+    title.textContent=assignment&&assignment.songTitle
+      ? assignment.songTitle
+      : (viewerTitle&&viewerTitle.textContent)||"No score loaded";
+
+    if(assignment){
+      const s=assignment.settings||{};
+      meta.textContent="Bars "+(s.startBar||1)+"–"+(s.endBar||1)+" · "+(s.startSpeed||100)+"% → "+(s.targetSpeed||100)+"%";
+    }else{
+      meta.textContent=(viewerMeta&&viewerMeta.textContent)||"Choose a song from Library or an assignment.";
+    }
+
+    const play=$("p77Play");
+    if(play){
+      const isPause=oldPlay&&String(oldPlay.textContent||"").trim().includes("Ⅱ");
+      play.disabled=!oldPlay||oldPlay.disabled;
+      play.childNodes[0].nodeValue=isPause?"Ⅱ":"▶";
+      const label=play.querySelector("span"); if(label) label.textContent=isPause?"Pause":"Play";
+    }
+
+    const restart=$("p77Restart");
+    if(restart) restart.disabled=!(retry&&!retry.disabled)&&(!oldPlay||oldPlay.disabled);
+
+    const loop=$("p77Loop");
+    if(loop){
+      loop.disabled=active||!oldLoop||oldLoop.disabled;
+      loop.classList.toggle("active",!!(oldLoop&&oldLoop.classList.contains("active")));
+    }
+
+    const sessionButton=$("p77Session");
+    if(sessionButton){
+      sessionButton.textContent=active?"Stop Practice":"Start Practice";
+      sessionButton.classList.toggle("running",active);
+      sessionButton.disabled=active?!(stop&&!stop.disabled):!(start&&!start.disabled);
+    }
+
+    const speed=$("p77Speed"), speedValue=$("p77SpeedValue");
+    if(speed&&oldSpeed){
+      speed.value=oldSpeed.value;
+      speed.disabled=active||oldSpeed.disabled;
+    }
+    if(speedValue) speedValue.textContent=($("speedValue")&&$("speedValue").textContent)||((oldSpeed&&oldSpeed.value)||100)+"%";
+
+    const zoom=$("p77Zoom"), zoomValue=$("p77ZoomValue");
+    if(zoom&&oldZoom){zoom.value=oldZoom.value;zoom.disabled=oldZoom.disabled;}
+    if(zoomValue) zoomValue.textContent=($("zoomValue")&&$("zoomValue").textContent)||((oldZoom&&oldZoom.value)||100)+"%";
+
+    const pos=$("p77Position");
+    if(pos) pos.textContent=($("position")&&$("position").textContent)||"00:00 / 00:00";
+
+    const synthProxy=$("p77Synth"), backingProxy=$("p77Backing");
+    const backingActive=!!(backing&&backing.classList.contains("active-source"));
+    if(synthProxy){
+      synthProxy.disabled=active||!synth||synth.disabled;
+      synthProxy.classList.toggle("active",!backingActive);
+    }
+    if(backingProxy){
+      backingProxy.disabled=active||!backing||backing.disabled;
+      backingProxy.classList.toggle("active",backingActive);
+    }
+
+    const mode=$("p77ModePill");
+    if(mode) mode.textContent=backingActive?"Synced Backing":"Synth";
+
+    const pdfProxy=$("p77OpenPdf");
+    if(pdfProxy) pdfProxy.disabled=!pdf||pdf.disabled;
+
+    const hint=$("p77GuidedHint");
+    if(hint){
+      hint.hidden=!active;
+      hint.textContent=active
+        ? "Guided Practice is controlling the loop and speed automatically."
+        : "";
+    }
+
+    const tools=$("p77ToolsToggle");
+    if(tools){
+      tools.hidden=!!(session&&session.role==="student");
+      tools.classList.toggle("active",practiceToolsOpen);
+      tools.textContent=practiceToolsOpen?"Hide Advanced Tools":"Advanced Tools";
+    }
+
+    const library=$("p77PracticeLibrary");
+    if(library) library.hidden=!!(session&&session.role==="student");
+
+    const assignments=$("p7PracticeAssignments");
+    if(assignments) assignments.textContent=session&&session.role==="student"?"Back to Assignments":"Assignments";
+
+    const heading=$("p7PracticeHeading"), sub=$("p7PracticeSub");
+    if(heading) heading.textContent=session&&session.role==="student"?"Practice Assignment":"Practice";
+    if(sub) sub.textContent=active?"Guided session running":assignment?"Assignment ready":"Score-first practice player";
+  }
+
+  function bindPracticeChrome(){
+    const play=$("p77Play"), restart=$("p77Restart"), loop=$("p77Loop"), sessionButton=$("p77Session");
+    const speed=$("p77Speed"), zoom=$("p77Zoom"), synth=$("p77Synth"), backing=$("p77Backing"), pdf=$("p77OpenPdf");
+
+    if(play) play.onclick=()=>practiceClick("playBtn");
+    if(loop) loop.onclick=()=>{if(!practiceSessionActive())practiceClick("loopBtn");};
+    if(restart) restart.onclick=()=>{
+      if(practiceClick("practiceRetryBtn")) return;
+      const stop=$("stopBtn"), oldPlay=$("playBtn");
+      if(stop&&!stop.disabled) stop.click();
+      if(oldPlay&&!oldPlay.disabled) setTimeout(()=>oldPlay.click(),40);
+    };
+    if(sessionButton) sessionButton.onclick=()=>{
+      if(practiceSessionActive()) practiceClick("practiceStopBtn");
+      else practiceClick("practiceStartBtn");
+    };
+    if(speed) speed.oninput=()=>{
+      if(practiceSessionActive()) return;
+      const old=$("speed");
+      if(old&&!old.disabled){old.value=speed.value;old.dispatchEvent(new Event("input",{bubbles:true}));}
+      syncPracticeChrome();
+    };
+    if(zoom) zoom.oninput=()=>{
+      const old=$("zoom");
+      if(old&&!old.disabled){old.value=zoom.value;old.dispatchEvent(new Event("input",{bubbles:true}));}
+      syncPracticeChrome();
+    };
+    if(synth) synth.onclick=()=>{if(!practiceSessionActive())practiceClick("synthModeBtn");setTimeout(syncPracticeChrome,80);};
+    if(backing) backing.onclick=()=>{if(!practiceSessionActive())practiceClick("backingModeBtn");setTimeout(syncPracticeChrome,80);};
+    if(pdf) pdf.onclick=()=>practiceClick("openPdfBtn");
+
+    if(practiceChromeObserver){try{practiceChromeObserver.disconnect();}catch(error){}}
+    practiceChromeObserver=new MutationObserver(()=>syncPracticeChrome());
+    [
+      "viewerTitle","viewerMeta","playBtn","loopBtn","speed","speedValue","zoom","zoomValue","position",
+      "synthModeBtn","backingModeBtn","openPdfBtn","practiceStartBtn","practiceStopBtn","practiceRetryBtn","practiceModeSection"
+    ].forEach(id=>{
+      const node=$(id);
+      if(node) practiceChromeObserver.observe(node,{attributes:true,childList:true,characterData:true,subtree:true});
+    });
+
+    ["dtmtp:practice-start","dtmtp:practice-rep","dtmtp:practice-speed-change","dtmtp:practice-stop","dtmtp:practice-complete","dtmtp:materials-ready"].forEach(name=>{
+      window.addEventListener(name,()=>setTimeout(syncPracticeChrome,0));
+    });
+    setTimeout(syncPracticeChrome,0);
+  }
+
   function openAssignments(view){
     if(view==="student"){
       navigate("assignments");
@@ -1758,7 +1921,10 @@
     if(route==="library") renderLibraryPage();
     if(route==="progress") renderProgress();
 
-    if(route==="practice" && session.role==="student") updateStudentPracticeGuide({});
+    if(route==="practice"){
+      if(session.role==="student") updateStudentPracticeGuide({});
+      setTimeout(syncPracticeChrome,0);
+    }
   }
 
   function applySession(next){
@@ -1767,7 +1933,7 @@
     buildNav();
 
     const sub=document.querySelector(".topbar .sub");
-    if(sub) sub.textContent=session.role==="teacher"?"Phase 7.6 · Song Library":"Phase 7.2 · Student Experience";
+    if(sub) sub.textContent=session.role==="teacher"?"Phase 7.7 · Practice Player":"Phase 7.7 · Practice Player";
 
     let desired="";
     try{desired=localStorage.getItem(ROUTE_KEY)||"";}catch(error){}
@@ -1775,6 +1941,7 @@
     if(pending) desired="practice";
     if(!validRoute(desired)) desired=session.role==="teacher"?"dashboard":"home";
     navigate(desired);
+    setTimeout(syncPracticeChrome,0);
   }
 
   function refreshData(){
@@ -1786,6 +1953,7 @@
     if(currentRoute==="assignments") renderAssignmentsOverview();
     if(currentRoute==="library") renderLibraryPage();
     if(currentRoute==="progress") renderProgress();
+    if(currentRoute==="practice") syncPracticeChrome();
   }
 
   window.addEventListener("dtmtp:auth-changed",e=>applySession(e.detail||null));
