@@ -172,3 +172,60 @@ Pending live checks:
 - Confirm the score has materially more usable vertical space than before and no controls cover notation.
 - Confirm count-in still appears at the top-left of the score with no background blur.
 - Confirm tablet/phone controls remain tappable and the score remains scrollable while the bottom navigation is visible.
+
+
+## Phase 7.8 — Final Polish
+
+Automated/source-level checks already passed:
+- Main JavaScript files parse without syntax errors.
+- All application CSS files have balanced braces.
+- Static HTML contains no duplicate IDs.
+- Every DOM dependency referenced by the existing Practice engine is still present.
+- Existing Phase 7.3 teacher/profile date and practice calculations still pass.
+- Existing Phase 7.5 assignment status and assignment-creation regression checks still pass.
+- Existing Phase 7.6 matching-file grouping still groups Interactive + PDF + Backing files into one song.
+- Existing Phase 7.7 Practice public state contract and score-first shell remain present.
+- Firebase teacher upload and student progress upload hooks remain intact.
+- Google Drive song publishing hooks remain intact.
+- The count-in remains top-left and explicitly has no background blur.
+- Tablet/mobile navigation switches to bottom navigation at 900px and below.
+- Student mobile navigation remains four columns; teacher navigation remains five columns.
+- Dynamic viewport units and top/bottom/left/right safe-area insets are present.
+- Mobile forms use 16px text sizing to avoid browser auto-zoom while editing.
+- Small-phone and short-landscape breakpoints are present.
+- Long titles/copy have overflow wrapping/min-width safeguards.
+- Keyboard focus-visible styling and reduced-motion handling are present.
+- Navigation buttons expose aria-label and aria-current state.
+- Primary navigation and main-content landmarks are exposed to assistive technology.
+- Add Song and Practice Complete overlays have dialog semantics.
+- Escape closes transient Add Song / completion / Advanced Tools UI.
+- Changing routes closes the teacher Advanced Tools drawer and resets the newly opened page scroll position.
+- Auth dialogs respect mobile safe areas and the sign-in/setup card remains scrollable on short screens.
+- Old Phase 6 / Phase 7.3 / Phase 7.5 / Phase 7.7 user-facing copy was removed from the active UI.
+
+Bugs / polish issues found and fixed during Phase 7.8:
+- Teacher mobile topbar could theoretically overflow when both cloud status and a long account name were visible; widths are now constrained and the control group owns the available row.
+- The mobile sign-in/setup card had a max height without an explicit scroll fallback; it is now scrollable.
+- The Progress heading still described itself as a future Phase 7.3 feature; it now describes the actual finished progress view.
+- The assignment wizard still displayed a Phase 7.5 development label; it now uses a normal product-facing “Assignment wizard” label.
+- Leaving Practice could preserve an open teacher Advanced Tools state; navigation now closes it.
+- Page scroll positions could carry over when changing main sections; a genuine route change now starts the destination page at the top.
+- Dialogs had Escape handling missing from the new shell layer; Add Song, Practice Complete and Advanced Tools can now be dismissed with Escape where applicable.
+
+Pending live/device checks:
+- Test teacher layout at approximately 1440px, 1024px, 900px, 834px, 768px, 430px, 390px and 360px widths.
+- Test student layout at the same phone/tablet widths and confirm the four-item bottom navigation remains evenly spaced.
+- On a real iPhone/iPad or equivalent mobile browser, confirm bottom navigation clears the home indicator/safe area.
+- Rotate a phone/tablet between portrait and landscape and confirm the current page remains usable without clipped navigation.
+- Confirm no browser auto-zoom occurs when focusing Library search, assignment fields, teacher notes or login fields on mobile.
+- Confirm long student names, song titles and account emails do not push cards/topbar controls off-screen.
+- Confirm teacher Cloud Account + cloud status fit on a narrow phone topbar.
+- Keyboard-test desktop navigation and forms using Tab / Shift+Tab; confirm focus rings are easy to follow.
+- Press Escape with Add Song open and confirm it closes.
+- Press Escape with the Practice Complete dialog open and confirm it closes.
+- Press Escape with teacher Advanced Tools open and confirm the drawer closes.
+- Confirm navigating away from Practice and back does not reopen Advanced Tools unexpectedly.
+- Confirm main pages start at the top when switching sections after previously scrolling.
+- Confirm sign-in / teacher setup remains scrollable on a short phone screen with the software keyboard open.
+- Confirm reduced-motion OS/browser preference does not leave essential UI state unclear.
+- Complete the still-pending authenticated Firebase / Drive / audio / student-device checks recorded under Phases 7.4–7.7.
