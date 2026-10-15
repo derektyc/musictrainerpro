@@ -600,3 +600,160 @@ body.role-student .p7-practice-main .viewer-head{padding:8px 11px}
   .p74-session-row .p7-activity-time{margin-left:auto}
   .p74-note-actions{align-items:flex-end}
 }
+
+
+/* ==========================================
+   PHASE 7.5 · ASSIGNMENT WIZARD
+========================================== */
+#p7PageAssignmentWizard{max-width:1120px;margin:0 auto}
+.p75-wizard-shell{max-width:980px;margin:0 auto}
+.p75-wizard-top{
+  display:flex;align-items:center;gap:13px;margin-bottom:18px
+}
+.p75-wizard-top>div:last-child{display:flex;flex-direction:column;gap:3px}
+.p75-wizard-top strong{font-size:16px}
+.p75-steps{
+  display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:22px
+}
+.p75-step{
+  position:relative;display:flex;align-items:center;gap:8px;padding:10px 11px;border-radius:12px;
+  border:1px solid #3b3b3d;background:#252526;color:#777
+}
+.p75-step b{
+  width:24px;height:24px;flex:0 0 24px;border-radius:8px;display:grid;place-items:center;
+  background:#303031;color:#aaa;font-size:9px
+}
+.p75-step span{font-size:9px;font-weight:800}
+.p75-step.active{border-color:#6b5738;background:#2b2824;color:#f0d1a3}
+.p75-step.active b{background:var(--p7-accent);color:#181818}
+.p75-step.done{color:#9ad7aa;border-color:#345340}
+.p75-step.done b{background:#284432;color:#a8e8ba}
+.p75-step-content{
+  background:#29292a;border:1px solid #3f3f41;border-radius:18px;padding:20px
+}
+.p75-step-heading{margin-bottom:17px}
+.p75-step-heading h1{margin:4px 0 6px;font-size:24px;letter-spacing:-.02em}
+.p75-step-heading p{margin:0;color:var(--p7-muted);font-size:10px;line-height:1.5}
+.p75-student-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.p75-student-card{
+  border:1px solid #3c3c3e;background:#242425;color:#eee;border-radius:14px;padding:13px;
+  display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:10px;align-items:center;text-align:left;cursor:pointer
+}
+.p75-student-card:hover{border-color:#575759;background:#29292a}
+.p75-student-card.selected{border-color:#80663e;background:#2b2824}
+.p75-student-card strong{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.p75-student-card span{font-size:8px;color:#999}
+.p75-search{
+  width:100%;box-sizing:border-box;background:#202021;border:1px solid #414143;color:#eee;
+  border-radius:11px;padding:11px 12px;font-size:11px;outline:none;margin-bottom:10px
+}
+.p75-search:focus{border-color:#765f3c}
+.p75-song-list{display:flex;flex-direction:column;gap:8px}
+.p75-song-card{
+  width:100%;border:1px solid #3c3c3e;background:#242425;color:#eee;border-radius:13px;
+  padding:12px 13px;display:flex;align-items:center;justify-content:space-between;gap:12px;text-align:left;cursor:pointer
+}
+.p75-song-card:hover:not(.disabled){border-color:#575759;background:#29292a}
+.p75-song-card.selected{border-color:#80663e;background:#2b2824}
+.p75-song-card.disabled{opacity:.45;cursor:not-allowed}
+.p75-song-card strong{display:block;font-size:11px}
+.p75-song-card span{display:block;font-size:8px;color:#999;margin-top:4px}
+.p75-song-check{font-size:17px;color:var(--p7-accent)}
+.p75-form{display:flex;flex-direction:column;gap:11px}
+.p75-form-section{
+  border:1px solid #3a3a3c;background:#242425;border-radius:13px;padding:13px
+}
+.p75-form-section h3{margin:0 0 10px;font-size:10px;color:#d8d8d4}
+.p75-form-grid{display:grid;gap:9px}
+.p75-form-grid.two{grid-template-columns:repeat(2,minmax(0,1fr))}
+.p75-form-grid.three{grid-template-columns:repeat(3,minmax(0,1fr));margin-bottom:9px}
+.p75-form label,.p75-wide-label{
+  display:block;font-size:8px;font-weight:800;color:#999;text-transform:uppercase;letter-spacing:.04em
+}
+.p75-form label span,.p75-wide-label span{text-transform:none;font-weight:600;letter-spacing:0;color:#777}
+.p75-form input,.p75-form select,.p75-form textarea{
+  width:100%;box-sizing:border-box;margin-top:5px;background:#1f1f20;color:#eee;border:1px solid #404042;
+  border-radius:9px;padding:9px;font:inherit;font-size:10px;outline:none
+}
+.p75-form input:focus,.p75-form select:focus,.p75-form textarea:focus{border-color:#765f3c}
+.p75-form textarea{min-height:90px;resize:vertical;line-height:1.45}
+.p75-wide-label{margin-top:9px}
+.p75-check{
+  margin-top:10px!important;display:flex!important;align-items:center;gap:8px!important;
+  text-transform:none!important;letter-spacing:0!important;color:#c8c8c4!important
+}
+.p75-check input{width:auto;margin:0}
+.p75-review-card{
+  border:1px solid #414143;background:#242425;border-radius:15px;padding:16px
+}
+.p75-review-title{
+  display:flex;align-items:center;justify-content:space-between;gap:15px;padding:9px 0;border-bottom:1px solid #353537
+}
+.p75-review-title span,.p75-review-grid span,.p75-review-note span{font-size:8px;color:#858583;text-transform:uppercase;letter-spacing:.06em}
+.p75-review-title strong{font-size:12px;text-align:right}
+.p75-review-grid{
+  display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-top:12px
+}
+.p75-review-grid>div{
+  border:1px solid #38383a;background:#29292a;border-radius:11px;padding:10px
+}
+.p75-review-grid strong{display:block;font-size:10px;margin-top:4px}
+.p75-review-note{margin-top:11px;border-left:2px solid #705936;background:#292723;border-radius:0 9px 9px 0;padding:10px}
+.p75-review-note p{font-size:10px;line-height:1.45;color:#d3cec4;margin:5px 0 0}
+.p75-review-countin{font-size:9px;color:#bdbdb9;margin-top:11px}
+.p75-wizard-actions{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:13px
+}
+.p75-wizard-actions button{min-width:120px}
+.p75-error{
+  border:1px solid #744242;background:#332626;color:#ffaaaa;border-radius:11px;padding:10px 12px;
+  font-size:9px;margin-bottom:12px
+}
+.p75-success{
+  border:1px solid #3e5f49;background:#252b27;border-radius:18px;padding:34px;text-align:center
+}
+.p75-success-icon{
+  width:58px;height:58px;border-radius:18px;background:#294532;color:#9fe1b1;display:grid;place-items:center;
+  font-size:27px;font-weight:900;margin:0 auto 14px
+}
+.p75-success h1{font-size:24px;margin:5px 0 8px}
+.p75-success p{max-width:570px;margin:0 auto;color:#aaa;font-size:10px;line-height:1.55}
+.p75-success-actions{display:flex;justify-content:center;gap:9px;margin-top:18px;flex-wrap:wrap}
+.p75-assignment-summary{
+  display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;gap:9px;align-items:center;
+  margin-bottom:14px;padding:12px;border:1px solid #3d3d3f;border-radius:14px;background:#262627
+}
+.p75-assignment-summary>div strong{display:block;font-size:17px}
+.p75-assignment-summary>div span{display:block;color:#888;font-size:8px;margin-top:3px}
+.p75-assignment-list{display:flex;flex-direction:column;gap:7px;margin-top:12px}
+.p75-assignment-row{
+  display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:9px;align-items:center;
+  border:1px solid #39393b;background:#242425;border-radius:12px;padding:8px 9px
+}
+.p75-assignment-main{
+  min-width:0;border:0;background:transparent;color:inherit;text-align:left;padding:3px;cursor:pointer
+}
+.p75-assignment-main:hover .p7-list-title{color:var(--p7-accent)}
+.p75-manage-btn{padding:6px 8px;font-size:8px}
+
+@media(max-width:760px){
+  #p7PageAssignmentWizard{padding-bottom:24px}
+  .p75-steps{gap:5px}
+  .p75-step{padding:8px 6px;justify-content:center}
+  .p75-step span{display:none}
+  .p75-student-grid{grid-template-columns:1fr}
+  .p75-form-grid.three{grid-template-columns:1fr 1fr}
+  .p75-form-grid.three label:last-child{grid-column:1/-1}
+  .p75-review-grid{grid-template-columns:1fr}
+  .p75-assignment-summary{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .p75-assignment-summary .p7-secondary{grid-column:1/-1}
+  .p75-assignment-row{grid-template-columns:minmax(0,1fr) auto}
+  .p75-assignment-row .p75-manage-btn{grid-column:1/-1;width:100%}
+}
+@media(max-width:480px){
+  .p75-step-content{padding:14px}
+  .p75-form-grid.two,.p75-form-grid.three{grid-template-columns:1fr}
+  .p75-form-grid.three label:last-child{grid-column:auto}
+  .p75-wizard-actions{display:grid;grid-template-columns:1fr 1fr}
+  .p75-wizard-actions button{min-width:0}
+}
