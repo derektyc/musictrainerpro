@@ -121,6 +121,12 @@
               <button id="p7PracticeAssignments" class="p7-secondary" type="button">Assignments</button>
             </div>
           </div>
+          <div id="p7StudentPracticeGuide" class="p7-student-practice-guide" hidden>
+            <div class="p7-guide-song"><strong id="p7GuideSong">Assignment</strong><span id="p7GuideBars">Ready to practise</span></div>
+            <div class="p7-guide-stat"><strong id="p7GuideSpeed">—</strong><span>Speed</span></div>
+            <div class="p7-guide-stat"><strong id="p7GuideReps">0 / 0</strong><span>Reps</span></div>
+            <div class="p7-guide-message" id="p7GuideMessage">Press Start Practice when you're ready.</div>
+          </div>
           <div class="p7-practice-body">
             <div id="p7PracticeMain" class="p7-practice-main"></div>
             <aside id="p7PracticeTools" class="p7-practice-tools"></aside>
@@ -247,33 +253,152 @@
     return (data.assignments||[]).filter(a=>!sid||a.studentId===sid);
   }
 
+  function assignmentById(id){
+    return studentAssignmentList().find(a=>a.id===id) || null;
+  }
+
+  function activeAssignment(){
+    const id=localStorage.getItem("dtmtp-active-assignment") || "";
+    return assignmentById(id);
+  }
+
+  function dateKey(value){
+    const d=value instanceof Date?value:new Date(value);
+    if(Number.isNaN(d.getTime())) return "";
+    return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+  }
+
+  function weekStartKey(value){
+    const d=value instanceof Date?new Date(value.getTime()):new Date(value);
+    if(Number.isNaN(d.getTime())) return "";
+    d.setHours(0,0,0,0);
+    const day=(d.getDay()+6)%7;
+    d.setDate(d.getDate()-day);
+    return dateKey(d);
+  }
+
+  function requirementProgress(a){
+    const req=a&&a.requirement?a.requirement:{count:1,period:"total"};
+    const count=Math.max(1,Number(req.count)||1);
+    const period=["day","week","total"].includes(req.period)?req.period:"total";
+    const sessions=(a&&a.progress&&Array.isArray(a.progress.sessions))?a.progress.sessions:[];
+    let done=0,label="Total";
+    if(period==="day"){
+      const key=dateKey(new Date());
+      done=sessions.filter(s=>dateKey(s.completedAt)===key).length;
+      label="Today";
+    }else if(period==="week"){
+      const key=weekStartKey(new Date());
+      done=sessions.filter(s=>weekStartKey(s.completedAt)===key).length;
+      label="This week";
+    }else{
+      done=sessions.length;
+    }
+    return {count,period,done,met:done>=count,label};
+  }
+
+  function dueLabel(a){
+    if(!a||!a.dueDate) return "";
+    const due=new Date(a.dueDate+"T23:59:59");
+    if(Number.isNaN(due.getTime())) return "";
+    const days=Math.ceil((due.getTime()-Date.now())/86400000);
+    if(days<0) return "Overdue";
+    if(days===0) return "Due today";
+    if(days===1) return "Due tomorrow";
+    return "Due "+due.toLocaleDateString(undefined,{day:"numeric",month:"short"});
+  }
+
+  function studentAssignmentSort(list){
+    return list.slice().sort((a,b)=>{
+      const ac=isCompleted(a)?1:0, bc=isCompleted(b)?1:0;
+      if(ac!==bc) return ac-bc;
+      const ad=a.dueDate||"9999-12-31", bd=b.dueDate||"9999-12-31";
+      return ad.localeCompare(bd) || String(b.createdAt||"").localeCompare(String(a.createdAt||""));
+    });
+  }
+
+  function sessionDays(){
+    const keys=new Set();
+    studentAssignmentList().forEach(a=>{
+      const sessions=a&&a.progress&&Array.isArray(a.progress.sessions)?a.progress.sessions:[];
+      sessions.forEach(s=>{ const key=dateKey(s.completedAt); if(key) keys.add(key); });
+    });
+    return keys;
+  }
+
+  function practiceStreak(){
+    const days=sessionDays();
+    if(!days.size) return 0;
+    let cursor=new Date();
+    cursor.setHours(0,0,0,0);
+    if(!days.has(dateKey(cursor))) cursor.setDate(cursor.getDate()-1);
+    let streak=0;
+    while(days.has(dateKey(cursor))){
+      streak++;
+      cursor.setDate(cursor.getDate()-1);
+    }
+    return streak;
+  }
+
+  function startStudentAssignment(id){
+    const a=assignmentById(id);
+    if(!a) return;
+    try{ localStorage.setItem(ROUTE_KEY,"practice"); }catch(error){}
+    navigate("practice");
+    updateStudentPracticeGuide({assignment:a,message:"Preparing your materials…"});
+    if(window.DTMusicTrainerAssignments && typeof window.DTMusicTrainerAssignments.loadAssignment==="function"){
+      window.DTMusicTrainerAssignments.loadAssignment(id);
+    }
+  }
+
   function renderStudentHome(){
-    const list=studentAssignmentList();
+    const list=studentAssignmentSort(studentAssignmentList());
     const active=list.filter(a=>!isCompleted(a));
-    const next=active[0]||list[0]||null;
+    const next=active[0]||null;
     const todayDone=list.filter(practicedToday).length;
     const totalMs=list.reduce((n,a)=>n+Number(a.progress&&a.progress.practiceMs||0),0);
     const best=list.reduce((n,a)=>Math.max(n,Number(a.progress&&a.progress.highestSpeed||0)),0);
+    const streak=practiceStreak();
 
-    let today='<div class="p7-empty">No assignments yet. Your teacher will add your practice here.</div>';
+    let today='<div class="p7-student-empty"><div class="p7-student-empty-icon">✓</div><strong>You are all caught up</strong><span>No active assignments right now.</span></div>';
     if(next){
       const s=next.settings||{};
-      today='<div class="p7-today-card"><div class="p7-today-title">'+escapeHtml(next.songTitle||"Practice assignment")+'</div>'+
-        '<div class="p7-today-meta">Bars '+(s.startBar||1)+'–'+(s.endBar||1)+' · '+(s.startSpeed||100)+'% → '+(s.targetSpeed||100)+'%</div>'+
-        (next.note?'<div class="p7-today-note"><strong>Teacher note</strong><br>'+escapeHtml(next.note)+'</div>':'')+
-        '<button id="p7StudentStart" class="p7-big-action" type="button">▶ Start Practice</button></div>';
+      const req=requirementProgress(next);
+      const due=dueLabel(next);
+      today='<div class="p7-today-card">'+
+        '<div class="p7-today-top"><div><div class="p7-today-kicker">NEXT UP</div><div class="p7-today-title">'+escapeHtml(next.songTitle||"Practice assignment")+'</div></div>'+
+        (due?'<span class="p7-due '+(due==="Overdue"?"overdue":"")+'">'+escapeHtml(due)+'</span>':'')+'</div>'+
+        '<div class="p7-assignment-specs">'+
+          '<span><b>Bars</b> '+(s.startBar||1)+'–'+(s.endBar||1)+'</span>'+
+          '<span><b>Speed</b> '+(s.startSpeed||100)+'% → '+(s.targetSpeed||100)+'%</span>'+
+          '<span><b>'+escapeHtml(req.label)+'</b> '+Math.min(req.done,req.count)+' / '+req.count+'</span>'+
+        '</div>'+
+        (next.note?'<div class="p7-today-note"><strong>From your teacher</strong><br>'+escapeHtml(next.note)+'</div>':'')+
+        '<button class="p7-big-action" data-student-start="'+escapeHtml(next.id)+'" type="button">▶ Start Practice</button></div>';
     }
 
-    $("p7PageHome").innerHTML=
-      '<div class="p7-student-hero"><div class="p7-eyebrow">Today</div><h2>Hi, '+escapeHtml((session&&session.displayName)||"Student")+'</h2><p>Your practice is kept simple here — open your assignment and start playing.</p>'+today+'</div>'+
-      '<div class="p7-progress-strip">'+
-        '<div class="p7-progress-box"><div class="v">'+todayDone+'</div><div class="k">Practised today</div></div>'+
-        '<div class="p7-progress-box"><div class="v">'+fmtMinutes(totalMs)+'</div><div class="k">Total practice</div></div>'+
-        '<div class="p7-progress-box"><div class="v">'+(best?best+"%":"—")+'</div><div class="k">Highest speed</div></div>'+
-      '</div>';
+    const upcoming=active.slice(1,4).map(a=>{
+      const s=a.settings||{}, due=dueLabel(a), req=requirementProgress(a);
+      return '<button class="p7-student-assignment-row" data-student-start="'+escapeHtml(a.id)+'" type="button">'+
+        '<div><strong>'+escapeHtml(a.songTitle||"Assignment")+'</strong><span>Bars '+(s.startBar||1)+'–'+(s.endBar||1)+' · '+Math.min(req.done,req.count)+'/'+req.count+' '+req.label.toLowerCase()+'</span></div>'+
+        '<div class="p7-student-row-side">'+(due?'<span>'+escapeHtml(due)+'</span>':'')+'<b>›</b></div></button>';
+    }).join("");
 
-    const start=$("p7StudentStart");
-    if(start) start.onclick=()=>openAssignments("student");
+    $("p7PageHome").innerHTML=
+      '<div class="p7-student-welcome"><div><div class="p7-eyebrow">Student home</div><h1>Hi, '+escapeHtml((session&&session.displayName)||"Student")+'</h1><p>Everything you need for today is right here.</p></div>'+
+      '<div class="p7-streak-pill">🔥 <strong>'+streak+'</strong><span>day streak</span></div></div>'+
+      '<div class="p7-student-home-grid"><div><div class="p7-section-label">Today\'s practice</div>'+today+'</div>'+
+      '<div class="p7-student-side-card"><div class="p7-card-title">Your progress</div>'+
+        '<div class="p7-student-stat"><strong>'+todayDone+'</strong><span>practised today</span></div>'+
+        '<div class="p7-student-stat"><strong>'+fmtMinutes(totalMs)+'</strong><span>total practice time</span></div>'+
+        '<div class="p7-student-stat"><strong>'+(best?best+"%":"—")+'</strong><span>highest speed</span></div>'+
+        '<button id="p7ViewProgress" class="p7-secondary p7-full-button" type="button">View my progress</button></div></div>'+
+      '<div class="p7-home-upcoming"><div class="p7-section-heading"><div><div class="p7-section-label">Coming up</div><strong>More assignments</strong></div><button id="p7ViewAllAssignments" type="button">View all</button></div>'+
+      (upcoming||'<div class="p7-student-empty compact"><span>No other active assignments.</span></div>')+'</div>';
+
+    $("p7PageHome").querySelectorAll("[data-student-start]").forEach(b=>b.onclick=()=>startStudentAssignment(b.dataset.studentStart));
+    const progress=$("p7ViewProgress"); if(progress) progress.onclick=()=>navigate("progress");
+    const all=$("p7ViewAllAssignments"); if(all) all.onclick=()=>navigate("assignments");
   }
 
   function renderStudents(){
@@ -288,38 +413,160 @@
   }
 
   function renderAssignmentsOverview(){
-    const list=session&&session.role==="student"?studentAssignmentList():(assignmentData().assignments||[]);
-    const rows=list.slice(0,10).map(a=>{
-      const p=a.progress||{};
-      return '<div class="p7-list-row"><div class="p7-list-main"><div class="p7-list-title">'+escapeHtml(a.songTitle||"Assignment")+'</div><div class="p7-list-meta">'+(a.dueDate?"Due "+a.dueDate+" · ":"")+(p.highestSpeed?("Highest "+p.highestSpeed+"%"):"Not practised yet")+'</div></div><span class="p7-badge '+(isCompleted(a)?"ok":"")+'">'+(isCompleted(a)?"Completed":"Active")+'</span></div>';
+    const studentMode=!!(session&&session.role==="student");
+    if(!studentMode){
+      const list=assignmentData().assignments||[];
+      const rows=list.slice(0,10).map(a=>{
+        const p=a.progress||{};
+        return '<div class="p7-list-row"><div class="p7-list-main"><div class="p7-list-title">'+escapeHtml(a.songTitle||"Assignment")+'</div><div class="p7-list-meta">'+(a.dueDate?"Due "+a.dueDate+" · ":"")+(p.highestSpeed?("Highest "+p.highestSpeed+"%"):"Not practised yet")+'</div></div><span class="p7-badge '+(isCompleted(a)?"ok":"")+'">'+(isCompleted(a)?"Completed":"Active")+'</span></div>';
+      }).join("");
+      $("p7AssignmentOverview").innerHTML='<div class="p7-card-title">Assignment overview</div><div class="p7-card-sub">The teacher assignment workflow will be redesigned in Phase 7.5.</div><div class="p7-list">'+(rows||'<div class="p7-empty">No assignments yet.</div>')+'</div>';
+      return;
+    }
+
+    const list=studentAssignmentSort(studentAssignmentList());
+    const active=list.filter(a=>!isCompleted(a));
+    const completed=list.filter(isCompleted);
+
+    const cards=active.map(a=>{
+      const s=a.settings||{}, req=requirementProgress(a), p=a.progress||{}, due=dueLabel(a);
+      const pct=Math.max(0,Math.min(100,Math.round((Math.min(req.done,req.count)/req.count)*100)));
+      return '<article class="p7-student-assignment-card">'+
+        '<div class="p7-assignment-card-head"><div><span class="p7-assignment-status">ACTIVE</span><h3>'+escapeHtml(a.songTitle||"Assignment")+'</h3></div>'+
+        (due?'<span class="p7-due '+(due==="Overdue"?"overdue":"")+'">'+escapeHtml(due)+'</span>':'')+'</div>'+
+        '<div class="p7-assignment-specs large">'+
+          '<span><b>Bars</b> '+(s.startBar||1)+'–'+(s.endBar||1)+'</span>'+
+          '<span><b>Start</b> '+(s.startSpeed||100)+'%</span>'+
+          '<span><b>Target</b> '+(s.targetSpeed||100)+'%</span>'+
+          '<span><b>Best</b> '+(Number(p.highestSpeed)||0)+'%</span></div>'+
+        (a.note?'<div class="p7-today-note"><strong>Teacher note</strong><br>'+escapeHtml(a.note)+'</div>':'')+
+        '<div class="p7-goal-row"><div><strong>'+escapeHtml(req.label)+' '+Math.min(req.done,req.count)+' / '+req.count+'</strong><span>Practice goal</span></div><div class="p7-goal-track"><i style="width:'+pct+'%"></i></div></div>'+
+        '<button class="p7-big-action" data-student-start="'+escapeHtml(a.id)+'" type="button">▶ Practice Assignment</button></article>';
     }).join("");
-    $("p7AssignmentOverview").innerHTML='<div class="p7-card-title">'+(session&&session.role==="student"?"My assignments":"Assignment overview")+'</div><div class="p7-card-sub">The current assignment dashboard remains available while we redesign the full workflow in Phase 7.5.</div><div class="p7-list">'+(rows||'<div class="p7-empty">No assignments yet.</div>')+'</div>';
+
+    const history=completed.slice(0,8).map(a=>{
+      const p=a.progress||{};
+      return '<div class="p7-history-row"><div><strong>'+escapeHtml(a.songTitle||"Assignment")+'</strong><span>'+(p.lastPractisedAt?new Date(p.lastPractisedAt).toLocaleDateString():"Completed")+'</span></div><span class="p7-complete-mark">✓ Completed</span></div>';
+    }).join("");
+
+    $("p7AssignmentOverview").innerHTML=
+      '<div class="p7-student-assignment-layout"><div><div class="p7-section-label">Active</div>'+
+      (cards||'<div class="p7-student-empty"><div class="p7-student-empty-icon">✓</div><strong>No active assignments</strong><span>Nice work — you are caught up.</span></div>')+
+      '</div><aside class="p7-student-history"><div class="p7-card-title">Completed</div><div class="p7-card-sub">Your recent finished assignments.</div>'+
+      (history||'<div class="p7-student-empty compact"><span>No completed assignments yet.</span></div>')+'</aside></div>';
+
+    $("p7AssignmentOverview").querySelectorAll("[data-student-start]").forEach(b=>b.onclick=()=>startStudentAssignment(b.dataset.studentStart));
   }
 
   function renderProgress(){
     const list=studentAssignmentList();
     const totalMs=list.reduce((n,a)=>n+Number(a.progress&&a.progress.practiceMs||0),0);
-    const sessions=list.reduce((n,a)=>n+((a.progress&&Array.isArray(a.progress.sessions))?a.progress.sessions.length:0),0);
+    const allSessions=[];
+    list.forEach(a=>{
+      const sessions=a&&a.progress&&Array.isArray(a.progress.sessions)?a.progress.sessions:[];
+      sessions.forEach(s=>allSessions.push({...s,songTitle:a.songTitle||"Assignment"}));
+    });
+    allSessions.sort((a,b)=>String(b.completedAt||"").localeCompare(String(a.completedAt||"")));
     const completed=list.filter(isCompleted).length;
+    const streak=practiceStreak();
+    const best=list.reduce((n,a)=>Math.max(n,Number(a.progress&&a.progress.highestSpeed||0)),0);
+
+    const recent=allSessions.slice(0,12).map(s=>{
+      const date=s.completedAt?new Date(s.completedAt):null;
+      const dateText=date&&!Number.isNaN(date.getTime())?date.toLocaleDateString(undefined,{day:"numeric",month:"short"}):"Practice";
+      const details=[];
+      if(Number(s.practiceMs)) details.push(fmtMinutes(s.practiceMs));
+      if(Number(s.highestSpeed)) details.push(Number(s.highestSpeed)+"%");
+      if(Number(s.reps)) details.push(Number(s.reps)+" reps");
+      return '<div class="p7-progress-history-row"><div class="p7-progress-date">'+escapeHtml(dateText)+'</div><div class="p7-progress-session"><strong>'+escapeHtml(s.songTitle)+'</strong><span>'+escapeHtml(details.join(" · ")||"Completed session")+'</span></div><span class="p7-complete-dot">✓</span></div>';
+    }).join("");
+
+    const days=sessionDays();
+    const week=[];
+    const monday=new Date();
+    monday.setHours(0,0,0,0);
+    monday.setDate(monday.getDate()-((monday.getDay()+6)%7));
+    for(let i=0;i<7;i++){
+      const d=new Date(monday); d.setDate(monday.getDate()+i);
+      week.push('<div class="p7-week-day '+(days.has(dateKey(d))?"done":"")+'"><span>'+["M","T","W","T","F","S","S"][i]+'</span><b>'+(days.has(dateKey(d))?"✓":"")+'</b></div>');
+    }
+
     $("p7ProgressSummary").innerHTML=
-      '<div class="p7-metrics" style="grid-template-columns:repeat(3,minmax(0,1fr))">'+
-      metric("Practice time",fmtMinutes(totalMs),"All recorded assignments")+
-      metric("Sessions",sessions,"Completed practice sessions")+
-      metric("Completed",completed,"Assignments completed")+
+      '<div class="p7-progress-hero"><div><div class="p7-eyebrow">My progress</div><h2>Keep the momentum going</h2><p>Every completed session adds to your practice history.</p></div><div class="p7-streak-large">🔥 <strong>'+streak+'</strong><span>day streak</span></div></div>'+
+      '<div class="p7-metrics p7-student-metrics">'+
+        metric("Practice time",fmtMinutes(totalMs),"All assignments")+
+        metric("Sessions",allSessions.length,"Completed sessions")+
+        metric("Completed",completed,"Assignments")+
+        metric("Best speed",best?best+"%":"—","Highest recorded")+
       '</div>'+
-      '<div class="p7-placeholder"><div><strong>Detailed progress is coming next</strong>Phase 7.3 will add practice history, streaks and student progress views.</div></div>';
+      '<div class="p7-progress-grid"><div class="p7-card"><div class="p7-card-title">This week</div><div class="p7-card-sub">Days with a completed practice session.</div><div class="p7-week-strip">'+week.join("")+'</div></div>'+
+      '<div class="p7-card"><div class="p7-card-title">Recent practice</div><div class="p7-card-sub">Your latest completed sessions.</div><div class="p7-progress-history">'+(recent||'<div class="p7-student-empty compact"><span>Complete your first practice session to start your history.</span></div>')+'</div></div></div>';
   }
 
   function openAssignments(view){
+    if(view==="student"){
+      navigate("assignments");
+      return;
+    }
     const btn=$("assignmentLaunchBtn");
     if(btn) btn.click();
     setTimeout(()=>{
-      if(view==="student"){
-        const tab=$("assignmentStudentTab"); if(tab) tab.click();
-      }else if(view==="teacher"){
-        const tab=$("assignmentTeacherTab"); if(tab) tab.click();
-      }
+      const tab=$("assignmentTeacherTab");
+      if(tab) tab.click();
     },30);
+  }
+
+  function updateStudentPracticeGuide(options){
+    if(!session || session.role!=="student") return;
+    const guide=$("p7StudentPracticeGuide");
+    if(!guide) return;
+    guide.hidden=false;
+    const a=(options&&options.assignment)||activeAssignment();
+    if(a){
+      const s=a.settings||{};
+      $("p7GuideSong").textContent=a.songTitle||"Practice assignment";
+      $("p7GuideBars").textContent="Bars "+(s.startBar||1)+"–"+(s.endBar||1)+" · Target "+(s.targetSpeed||100)+"%";
+    }
+    if(options&&options.speed!=null) $("p7GuideSpeed").textContent=Math.round(Number(options.speed)||0)+"%";
+    else if(a) $("p7GuideSpeed").textContent=Math.round(Number(a.settings&&a.settings.startSpeed)||100)+"%";
+    if(options&&options.repsText) $("p7GuideReps").textContent=options.repsText;
+    else if(a) $("p7GuideReps").textContent="0 / "+Math.max(1,Number(a.settings&&a.settings.repsPerStep)||1);
+    $("p7GuideMessage").textContent=(options&&options.message)||"Press Start Practice when you're ready.";
+    if(a){
+      $("p7PracticeHeading").textContent=a.songTitle||"Practice";
+      $("p7PracticeSub").textContent="Bars "+(a.settings&&a.settings.startBar||1)+"–"+(a.settings&&a.settings.endBar||1);
+    }
+  }
+
+  function hideCompletion(){
+    const node=$("p7Completion");
+    if(node) node.remove();
+  }
+
+  function showCompletion(detail){
+    if(!session || session.role!=="student") return;
+    hideCompletion();
+    const a=activeAssignment();
+    const overlay=document.createElement("div");
+    overlay.id="p7Completion";
+    overlay.className="p7-completion-overlay";
+    const req=a?requirementProgress(a):null;
+    overlay.innerHTML='<div class="p7-completion-card">'+
+      '<div class="p7-completion-check">✓</div>'+
+      '<div class="p7-eyebrow">Practice complete</div>'+
+      '<h2>'+escapeHtml((a&&a.songTitle)||"Great work")+'</h2>'+
+      '<p>You finished this practice session.</p>'+
+      '<div class="p7-completion-stats">'+
+        '<div><strong>'+Math.round(Number(detail.currentSpeed)||0)+'%</strong><span>Highest speed</span></div>'+
+        '<div><strong>'+Math.max(0,Number(detail.totalReps)||0)+'</strong><span>Repetitions</span></div>'+
+        '<div><strong>'+fmtMinutes(detail.elapsedMs||0)+'</strong><span>Practice time</span></div>'+
+      '</div>'+
+      (req?'<div class="p7-completion-goal '+(req.met?"done":"")+'"><span>'+escapeHtml(req.label)+' goal</span><strong>'+Math.min(req.done,req.count)+' / '+req.count+(req.met?" ✓":"")+'</strong></div>':'')+
+      '<div class="p7-completion-actions"><button id="p7CompletionDone" class="p7-primary" type="button">Done</button><button id="p7CompletionAgain" class="p7-secondary" type="button">Practice Again</button></div>'+
+      '</div>';
+    document.body.appendChild(overlay);
+    $("p7CompletionDone").onclick=()=>{ hideCompletion(); navigate("home"); };
+    $("p7CompletionAgain").onclick=()=>{ hideCompletion(); if(a) startStudentAssignment(a.id); };
   }
 
   function escapeHtml(value){
@@ -370,7 +617,8 @@
     if(route==="assignments") renderAssignmentsOverview();
     if(route==="progress") renderProgress();
 
-    if(route==="assignments") setTimeout(()=>openAssignments(session.role==="student"?"student":"teacher"),80);
+    if(route==="assignments" && session.role==="teacher") setTimeout(()=>openAssignments("teacher"),80);
+    if(route==="practice" && session.role==="student") updateStudentPracticeGuide({});
   }
 
   function applySession(next){
@@ -379,7 +627,7 @@
     buildNav();
 
     const sub=document.querySelector(".topbar .sub");
-    if(sub) sub.textContent="Phase 7.1 · New App Shell";
+    if(sub) sub.textContent="Phase 7.2 · Student Experience";
 
     let desired="";
     try{desired=localStorage.getItem(ROUTE_KEY)||"";}catch(error){}
@@ -400,8 +648,52 @@
 
   window.addEventListener("dtmtp:auth-changed",e=>applySession(e.detail||null));
   window.addEventListener("dtmtp:cloud-data-applied",refreshData);
-  window.addEventListener("dtmtp:practice-complete",refreshData);
-  window.addEventListener("dtmtp:practice-stop",refreshData);
+  window.addEventListener("dtmtp:practice-start",e=>{
+    if(session&&session.role==="student"){
+      const d=e.detail||{};
+      updateStudentPracticeGuide({
+        speed:d.currentSpeed,
+        repsText:(Number(d.repsAtStep)||0)+" / "+Math.max(1,Number(d.settings&&d.settings.repsPerStep)||1),
+        message:"Listen, play, and keep the section steady."
+      });
+    }
+  });
+  window.addEventListener("dtmtp:practice-rep",e=>{
+    if(session&&session.role==="student"){
+      const d=e.detail||{}, need=Math.max(1,Number(d.settings&&d.settings.repsPerStep)||1);
+      const reps=Math.max(0,Number(d.repsAtStep)||0);
+      updateStudentPracticeGuide({
+        speed:d.currentSpeed,
+        repsText:reps+" / "+need,
+        message:reps>=need?"Nice — moving to the next speed.":"Good rep. Keep going."
+      });
+    }
+  });
+  window.addEventListener("dtmtp:practice-speed-change",e=>{
+    if(session&&session.role==="student"){
+      const d=e.detail||{};
+      updateStudentPracticeGuide({
+        speed:d.currentSpeed,
+        repsText:"0 / "+Math.max(1,Number(d.settings&&d.settings.repsPerStep)||1),
+        message:"Great! Speed increased to "+Math.round(Number(d.currentSpeed)||0)+"%."
+      });
+    }
+  });
+  window.addEventListener("dtmtp:practice-complete",e=>{
+    refreshData();
+    if(session&&session.role==="student"){
+      const d=e.detail||{};
+      updateStudentPracticeGuide({speed:d.currentSpeed,repsText:"✓",message:"Practice complete — great work!"});
+      setTimeout(()=>showCompletion(d),120);
+    }
+  });
+  window.addEventListener("dtmtp:practice-stop",e=>{
+    refreshData();
+    if(session&&session.role==="student"){
+      const d=e.detail||{};
+      updateStudentPracticeGuide({speed:d.currentSpeed,message:"Practice paused. Start again whenever you're ready."});
+    }
+  });
   window.addEventListener("dtmtp:materials-ready",refreshData);
 
   document.addEventListener("DOMContentLoaded",buildShell);
