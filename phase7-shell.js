@@ -455,7 +455,7 @@
     root.innerHTML=
       pageHead("Teaching materials","Song Library","Find, manage, preview and assign your teaching materials.",
         '<button id="p76AddSong" class="p7-primary" type="button">+ Add Song</button>')+
-      '<div id="p76LibraryMessage" class="p76-message" '+(libraryState.message?"":"hidden")+'>'+escapeHtml(libraryState.message||"")+'</div>'+
+      '<div id="p76LibraryMessage" class="p76-message" aria-live="polite" '+(libraryState.message?"":"hidden")+'>'+escapeHtml(libraryState.message||"")+'</div>'+
       '<div class="p76-stats">'+
         metric("Songs",total,"In this device")+
         metric("Interactive",interactiveCount,"Ready for guided practice")+
@@ -589,6 +589,9 @@
     const overlay=document.createElement("div");
     overlay.id="p76AddOverlay";
     overlay.className="p76-overlay";
+    overlay.setAttribute("role","dialog");
+    overlay.setAttribute("aria-modal","true");
+    overlay.setAttribute("aria-label","Add Song");
     overlay.innerHTML='<div class="p76-add-dialog"><div class="p76-add-head"><div><div class="p7-eyebrow">New teaching material</div><h2>Add Song</h2><p>Create the song first, then attach any materials you already have.</p></div><button id="p76AddClose" type="button">×</button></div>'+
       '<label>Song title<input id="p76AddTitle" type="text" placeholder="e.g. Ain\'t No Sunshine"></label>'+
       '<div class="p76-add-files">'+
@@ -598,6 +601,7 @@
       '</div><div id="p76AddError" class="p75-error" hidden></div>'+
       '<div class="p76-add-actions"><button id="p76AddCancel" class="p7-secondary" type="button">Cancel</button><button id="p76AddSave" class="p7-primary" type="button">Save Song</button></div></div>';
     root.appendChild(overlay);
+    setTimeout(()=>{const title=$("p76AddTitle");if(title)title.focus();},0);
     const close=()=>overlay.remove();
     $("p76AddClose").onclick=close;
     $("p76AddCancel").onclick=close;
@@ -1869,6 +1873,9 @@
     const overlay=document.createElement("div");
     overlay.id="p7Completion";
     overlay.className="p7-completion-overlay";
+    overlay.setAttribute("role","dialog");
+    overlay.setAttribute("aria-modal","true");
+    overlay.setAttribute("aria-label","Practice complete");
     const req=a?requirementProgress(a):null;
     overlay.innerHTML='<div class="p7-completion-card">'+
       '<div class="p7-completion-check">✓</div>'+
@@ -1884,6 +1891,7 @@
       '<div class="p7-completion-actions"><button id="p7CompletionDone" class="p7-primary" type="button">Done</button><button id="p7CompletionAgain" class="p7-secondary" type="button">Practice Again</button></div>'+
       '</div>';
     document.body.appendChild(overlay);
+    setTimeout(()=>{const done=$("p7CompletionDone");if(done)done.focus();},0);
     $("p7CompletionDone").onclick=()=>{ hideCompletion(); navigate("home"); };
     $("p7CompletionAgain").onclick=()=>{ hideCompletion(); if(a) startStudentAssignment(a.id); };
   }
