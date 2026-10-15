@@ -1942,6 +1942,11 @@
   function applySession(next){
     session=next||authSession();
     if(!shellBuilt || !session) return;
+    if(session.role==="student"){
+      practiceToolsOpen=false;
+      const practicePage=$("p7PagePractice");
+      if(practicePage) practicePage.classList.remove("p77-tools-open");
+    }
     buildNav();
 
     const sub=document.querySelector(".topbar .sub");
