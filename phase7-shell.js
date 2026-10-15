@@ -17,6 +17,7 @@
   let librarySongs = [];
   let libraryRenderToken = 0;
   let libraryAudioUrl = "";
+  let librarySearchTimer = null;
 
   const routes = {
     teacher:[
@@ -417,7 +418,7 @@
         '<span>'+(assignedNoBacking?"⚠ "+assignedNoBacking+" assigned without backing":"✓ Assigned backing tracks look good")+'</span></div>'+
       '<div class="p76-toolbar"><div class="p76-search-wrap"><input id="p76Search" type="search" placeholder="Search songs…" value="'+escapeHtml(libraryState.search)+'"></div>'+
         '<div class="p76-filters">'+["all","interactive","pdf","backing","assigned","incomplete"].map(key=>'<button data-p76-filter="'+key+'" class="'+(libraryState.filter===key?"active":"")+'" type="button">'+({all:"All",interactive:"Interactive",pdf:"PDF",backing:"Backing",assigned:"Assigned",incomplete:"Incomplete"}[key])+'</button>').join("")+'</div>'+
-        '<button id="p76BulkAdd" class="p7-secondary" type="button">Add Files</button><input id="p76BulkFile" type="file" multiple hidden accept=".pdf,.gp,.gpx,.gp3,.gp4,.gp5,.gp6,.gp7,.gp8,.musicxml,.mxl,.xml,.mp3,.wav,application/pdf,application/xml,text/xml,audio/mpeg,audio/wav,audio/x-wav"></div>'+
+        '<div class="p76-toolbar-actions"><button id="p76BulkAdd" class="p7-secondary" type="button">Add Files</button><button id="p76SaveZip" class="p7-secondary" type="button">Save ZIP</button><button id="p76LoadZip" class="p7-secondary" type="button">Load ZIP</button></div><input id="p76BulkFile" type="file" multiple hidden accept=".pdf,.gp,.gpx,.gp3,.gp4,.gp5,.gp6,.gp7,.gp8,.musicxml,.mxl,.xml,.mp3,.wav,application/pdf,application/xml,text/xml,audio/mpeg,audio/wav,audio/x-wav"></div>'+
       '<div id="p76Dropzone" class="p76-dropzone">Drop Guitar Pro / MusicXML, PDF, MP3 or WAV files here — matching filenames are grouped automatically.</div>'+
       '<div class="p76-library-layout"><section id="p76Catalog" class="p76-catalog">'+
         '<div class="p76-catalog-head"><strong>'+visible.length+' song'+(visible.length===1?"":"s")+'</strong><span>'+escapeHtml(libraryState.filter==="all"?"All materials":libraryState.filter)+'</span></div>'+
@@ -425,18 +426,35 @@
         '<aside id="p76Detail" class="p76-detail-panel">'+detail+'</aside></div>';
 
     const search=$("p76Search");
-    if(search) search.addEventListener("input",()=>{libraryState.search=search.value;renderLibraryPage();});
+    if(search) search.addEventListener("input",()=>{
+      libraryState.search=search.value;
+      clearTimeout(librarySearchTimer);
+      librarySearchTimer=setTimeout(async()=>{
+        await renderLibraryPage();
+        const next=$("p76Search");
+        if(next){
+          next.focus();
+          const end=next.value.length;
+          try{next.setSelectionRange(end,end);}catch(error){}
+        }
+      },120);
+    });
     root.querySelectorAll("[data-p76-filter]").forEach(b=>b.onclick=()=>{libraryState.filter=b.dataset.p76Filter;renderLibraryPage();});
     root.querySelectorAll("[data-p76-song]").forEach(b=>b.onclick=async()=>{
       libraryState.selectedId=b.dataset.p76Song;
       try{if(api.selectSong) await api.selectSong(libraryState.selectedId);}catch(error){}
-      renderLibraryPage();
+      await renderLibraryPage();
+      const nextRoot=$("p76LibraryRoot");
+      if(nextRoot) nextRoot.classList.add("p76-show-detail");
     });
 
     const add=$("p76AddSong"); if(add) add.onclick=()=>openLibraryAddSong();
     const bulk=$("p76BulkAdd"), bulkInput=$("p76BulkFile");
     if(bulk&&bulkInput) bulk.onclick=()=>bulkInput.click();
     if(bulkInput) bulkInput.onchange=()=>handleLibraryBulkFiles(bulkInput.files);
+    const saveZip=$("p76SaveZip"), loadZip=$("p76LoadZip");
+    if(saveZip) saveZip.onclick=()=>{const b=$("saveLibraryBtn");if(b)b.click();};
+    if(loadZip) loadZip.onclick=()=>{const b=$("loadLibraryBtn");if(b)b.click();};
 
     const drop=$("p76Dropzone");
     if(drop){
@@ -446,7 +464,14 @@
     }
 
     root.querySelectorAll("[data-p76-open-interactive]").forEach(b=>b.onclick=()=>openLibraryInteractive(b.dataset.p76OpenInteractive));
-    root.querySelectorAll("[data-p76-open-pdf]").forEach(b=>b.onclick=()=>api.openPdf&&api.openPdf(b.dataset.p76OpenPdf));
+    root.querySelectorAll("[data-p76-open-pdf]").forEach(b=>b.onclick=()=>{
+      const song=librarySongs.find(s=>s.id===b.dataset.p76OpenPdf);
+      if(!song||!song.pdf||!song.pdf.blob)return;
+      const url=URL.createObjectURL(song.pdf.blob);
+      const win=window.open(url,"_blank");
+      if(!win){URL.revokeObjectURL(url);setLibraryMessage("Pop-up blocked. Allow pop-ups to preview PDFs.");return;}
+      setTimeout(()=>URL.revokeObjectURL(url),60000);
+    });
     root.querySelectorAll("[data-p76-student]").forEach(b=>b.onclick=()=>{if(b.dataset.p76Student)openTeacherStudent(b.dataset.p76Student);});
 
     const assign=$("p76AssignSong"); if(assign&&selected) assign.onclick=()=>openAssignmentWizard("",selected.id);
@@ -488,11 +513,6 @@
       }
     }else revokeLibraryAudio();
 
-    if(selected){
-      root.querySelectorAll("[data-p76-song]").forEach(b=>{
-        if(b.dataset.p76Song===selected.id) b.addEventListener("click",()=>root.classList.add("p76-show-detail"));
-      });
-    }
   }
 
   async function handleLibraryBulkFiles(files){
@@ -1089,8 +1109,8 @@
       });
       const manageStudents=$("p75ManageStudents"); if(manageStudents) manageStudents.onclick=()=>openAssignments("teacher");
       const next=$("p75WizardNext");
-      if(next){ next.disabled=!assignmentWizard.studentId; next.onclick=()=>{
-        if(!assignmentWizard.studentId)return;
+      if(next){ next.disabled=!assignmentWizard.studentId||(assignmentWizard.entry==="library"&&assignmentWizard.songsLoading); next.onclick=()=>{
+        if(!assignmentWizard.studentId||(assignmentWizard.entry==="library"&&assignmentWizard.songsLoading))return;
         assignmentWizard.step=assignmentWizard.entry==="library"&&assignmentWizard.songId?3:2;
         renderAssignmentWizard(false);
         if(assignmentWizard.step===2&&!assignmentWizard.songsLoading) renderWizardSongChoices("");
@@ -1672,6 +1692,7 @@
 
   function navigate(route){
     if(!session) return;
+    if(route!=="library") revokeLibraryAudio();
     if(!validRoute(route)) route=session.role==="teacher"?"dashboard":"home";
     currentRoute=route;
     try{localStorage.setItem(ROUTE_KEY,route);}catch(error){}
