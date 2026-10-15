@@ -115,7 +115,11 @@
         <section id="p7PagePractice" class="p7-page p7-practice-page">
           <div class="p7-practice-top">
             <div><strong id="p7PracticeHeading">Practice</strong><span id="p7PracticeSub">Score & playback</span></div>
-            <button id="p7PracticeAssignments" class="p7-secondary" type="button">Assignments</button>
+            <div class="p7-practice-top-actions">
+              <button id="p7PracticeStart" class="p7-primary" type="button">Start Practice</button>
+              <button id="p7PracticeStop" class="p7-secondary" type="button">Stop</button>
+              <button id="p7PracticeAssignments" class="p7-secondary" type="button">Assignments</button>
+            </div>
           </div>
           <div class="p7-practice-body">
             <div id="p7PracticeMain" class="p7-practice-main"></div>
@@ -157,7 +161,9 @@
     document.body.classList.add("p7-ready");
     shellBuilt=true;
 
-    $("p7PracticeAssignments").onclick=()=>openAssignments();
+    $("p7PracticeAssignments").onclick=()=>openAssignments(session&&session.role==="student"?"student":"teacher");
+    $("p7PracticeStart").onclick=()=>{ const b=$("practiceStartBtn"); if(b && !b.disabled) b.click(); };
+    $("p7PracticeStop").onclick=()=>{ const b=$("practiceStopBtn"); if(b && !b.disabled) b.click(); };
     renderStaticPages();
     applySession(authSession());
   }
