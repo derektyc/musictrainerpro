@@ -258,7 +258,7 @@
     const related=libraryAssignmentsFor(song.id);
     if(!related.length) return {text:"Local",cls:""};
     return libraryDriveConnected()
-      ? {text:"Assigned · Auto sync",cls:"ok"}
+      ? {text:"Assigned · Drive connected",cls:"ok"}
       : {text:"Assigned · Reconnect Drive",cls:"warn"};
   }
 
@@ -342,6 +342,8 @@
     const pdfCount=librarySongs.filter(s=>s.pdf).length;
     const backingCount=librarySongs.filter(s=>s.audio).length;
     const assignedCount=librarySongs.filter(s=>assignedIds.has(s.id)).length;
+    const localIds=new Set(librarySongs.map(s=>s.id));
+    const missingLocalAssigned=[...assignedIds].filter(id=>!localIds.has(id)).length;
     const missingInteractive=librarySongs.filter(s=>!s.interactive).length;
     const assignedNoPdf=librarySongs.filter(s=>assignedIds.has(s.id)&&!s.pdf).length;
     const assignedNoBacking=librarySongs.filter(s=>assignedIds.has(s.id)&&!s.audio).length;
@@ -414,6 +416,7 @@
         metric("Assigned",assignedCount,"Used by assignments")+
       '</div>'+
       '<div class="p76-health"><div><strong>Library Health</strong><span>'+(missingInteractive?"⚠ "+missingInteractive+" without interactive score":"✓ All songs have interactive scores")+'</span></div>'+
+        '<span>'+(missingLocalAssigned?"⚠ "+missingLocalAssigned+" assigned song"+(missingLocalAssigned===1?" is":"s are")+" missing locally":"✓ Assigned songs are present locally")+'</span>'+
         '<span>'+(assignedNoPdf?"⚠ "+assignedNoPdf+" assigned without PDF":"✓ Assigned PDFs look good")+'</span>'+
         '<span>'+(assignedNoBacking?"⚠ "+assignedNoBacking+" assigned without backing":"✓ Assigned backing tracks look good")+'</span></div>'+
       '<div class="p76-toolbar"><div class="p76-search-wrap"><input id="p76Search" type="search" placeholder="Search songs…" value="'+escapeHtml(libraryState.search)+'"></div>'+
