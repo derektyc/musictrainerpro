@@ -146,6 +146,12 @@
     if(moved.selected) $("p7LibraryRight").appendChild(moved.selected);
 
     $("p7PracticeMain").appendChild(moved.main);
+
+    // Keep the practice count-in inside the score viewport so the score stays visible.
+    const countdown=$("practiceCountdown");
+    const scoreViewport=$("scoreViewport");
+    if(countdown && scoreViewport) scoreViewport.appendChild(countdown);
+
     const tools=$("p7PracticeTools");
     [
       ["Practice setup",moved.practice,true],
