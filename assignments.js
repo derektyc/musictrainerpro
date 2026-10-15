@@ -685,6 +685,8 @@
     const a = data.assignments.find(x => x.id === id);
     if(!a) return;
 
+    try{ localStorage.setItem("dtmtp-p7-route","practice"); }catch(error){}
+
     if(window.DTMusicTrainerSongCloud && typeof window.DTMusicTrainerSongCloud.ensureSong === "function"){
       try{
         toast("Checking assignment materials…");
