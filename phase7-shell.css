@@ -436,3 +436,79 @@ body.role-student .p7-practice-main .viewer-head{padding:8px 11px}
   .p7-completion-stats{gap:5px}
   .p7-completion-stats strong{font-size:15px}
 }
+
+
+/* ==========================================
+   PHASE 7.3 · TEACHER DASHBOARD
+========================================== */
+.p7-teacher-metrics{margin-bottom:12px}
+.p7-teacher-week-card{
+  display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;gap:10px;align-items:center;
+  background:#262627;border:1px solid #3d3d3f;border-radius:16px;padding:13px 14px;margin-bottom:14px
+}
+.p7-teacher-week-card>div{min-width:0}
+.p7-teacher-week-card strong{font-size:18px;display:block;line-height:1.1}
+.p7-teacher-week-card span{display:block;font-size:9px;color:var(--p7-muted);margin-top:4px}
+.p7-teacher-dashboard-grid{
+  display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:14px
+}
+.p7-card-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.p7-count-chip{
+  min-width:27px;height:27px;border-radius:999px;display:grid;place-items:center;
+  background:#242425;border:1px solid #444;color:#cfcfcb;font-size:10px;font-weight:850
+}
+.p7-teacher-list{display:flex;flex-direction:column;gap:7px}
+.p7-teacher-attention-row,.p7-teacher-activity-row,.p7-teacher-due-row,.p7-teacher-student-row{
+  width:100%;border:1px solid #39393b;background:#242425;color:inherit;border-radius:12px;
+  display:flex;align-items:center;gap:10px;text-align:left;padding:10px 11px;cursor:pointer
+}
+.p7-teacher-attention-row:hover,.p7-teacher-activity-row:hover,.p7-teacher-due-row:hover,.p7-teacher-student-row:hover{
+  background:#29292a;border-color:#555
+}
+.p7-teacher-student-avatar{
+  width:32px;height:32px;flex:0 0 32px;border-radius:10px;display:grid;place-items:center;
+  background:#303031;border:1px solid #444;font-size:11px;font-weight:900;color:#e7e7e2
+}
+.p7-attention-pill{
+  border:1px solid #464648;border-radius:999px;padding:5px 8px;font-size:8px;
+  color:#bdbdb9;white-space:nowrap
+}
+.p7-attention-pill.ok{color:var(--p7-ok);border-color:#315d43;background:rgba(87,176,113,.07)}
+.p7-attention-pill.warn{color:#f4c785;border-color:#665333;background:rgba(242,182,106,.06)}
+.p7-attention-pill.danger{color:#ff9a9a;border-color:#704343;background:rgba(255,110,110,.06)}
+.p7-activity-dot{width:8px;height:8px;flex:0 0 8px;border-radius:50%;background:var(--p7-ok)}
+.p7-activity-time{font-size:8px;color:#888;white-space:nowrap}
+.p7-teacher-due-row .p7-due{margin-left:auto}
+.p7-teacher-student-table-head{
+  display:grid;grid-template-columns:minmax(220px,1.3fr) minmax(100px,.55fr) minmax(100px,.55fr) minmax(120px,.7fr);
+  gap:10px;padding:4px 47px 7px 53px;color:#81817f;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.07em
+}
+.p7-teacher-student-list{display:flex;flex-direction:column;gap:7px}
+.p7-teacher-student-row{
+  display:grid;grid-template-columns:32px minmax(170px,1.3fr) minmax(90px,.55fr) minmax(90px,.55fr) minmax(110px,.7fr) 16px;
+  gap:10px;align-items:center
+}
+.p7-teacher-student-name{min-width:0}
+.p7-teacher-student-name strong{font-size:11px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.p7-teacher-student-name span,.p7-teacher-student-week span{display:block;font-size:8px;color:#888;margin-top:3px}
+.p7-teacher-student-week strong{font-size:10px}
+.p7-row-arrow{font-size:20px;color:#777;text-align:right}
+
+@media(max-width:980px){
+  .p7-teacher-dashboard-grid{grid-template-columns:1fr}
+  .p7-teacher-week-card{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .p7-teacher-week-card .p7-secondary{grid-column:1/-1}
+  .p7-teacher-student-table-head{display:none}
+  .p7-teacher-student-row{
+    grid-template-columns:32px minmax(130px,1fr) auto 16px
+  }
+  .p7-teacher-student-week{display:none}
+}
+@media(max-width:600px){
+  .p7-teacher-week-card{grid-template-columns:1fr 1fr}
+  .p7-teacher-week-card>div:first-child{grid-column:1/-1}
+  .p7-teacher-week-card .p7-secondary{grid-column:1/-1}
+  .p7-teacher-student-row{grid-template-columns:32px minmax(0,1fr) auto}
+  .p7-teacher-student-row .p7-row-arrow{display:none}
+  .p7-attention-pill{max-width:108px;overflow:hidden;text-overflow:ellipsis}
+}
