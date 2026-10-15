@@ -66,7 +66,7 @@
     gate.innerHTML = `
       <div class="auth-card">
         <div class="auth-brand">DT Music Trainer Pro</div>
-        <div class="auth-kicker">Phase 6B · Firebase Cloud Sync</div>
+        <div class="auth-kicker">Cloud sign-in</div>
         <div class="auth-switch">
           <button id="authShowLogin" class="active" type="button">Sign In</button>
           <button id="authShowSetup" type="button">Teacher Setup</button>
@@ -91,7 +91,7 @@
         </div>
 
         <div id="authGateMessage" class="auth-message">Connecting to Firebase…</div>
-        <div class="auth-local-note">Phase 6A local passwords are not uploaded. Student cloud logins are recreated by the teacher in this phase.</div>
+        <div class="auth-local-note">Legacy local passwords are not uploaded. Student cloud logins are created and managed by the teacher.</div>
       </div>`;
     document.body.appendChild(gate);
 
@@ -229,7 +229,7 @@
     const accountBtn = $("authAccountBtn");
     if(accountBtn) accountBtn.textContent = (account.role === "student" ? "Student · " : "Teacher · ") + (account.displayName || account.email);
     const sub = document.querySelector(".topbar .sub");
-    if(sub) sub.textContent = "Phase 6B · Firebase Cloud Sync";
+    if(sub) sub.textContent = "Phase 7.8 · Final Polish";
 
     if(account.role === "student"){
       const launch = $("assignmentLaunchBtn");
