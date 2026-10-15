@@ -679,7 +679,7 @@
       body='<div class="p75-step-content"><div class="p75-step-heading"><div class="p7-eyebrow">Step 1 of 4</div><h1>Who is this for?</h1><p>Choose the student receiving this assignment.</p></div>'+
         '<div class="p75-student-grid">'+students.map(s=>'<button class="p75-student-card '+(assignmentWizard.studentId===s.id?"selected":"")+'" data-wizard-student="'+escapeHtml(s.id)+'" type="button">'+
           '<div class="p7-teacher-student-avatar">'+escapeHtml((s.name||"S").trim().charAt(0).toUpperCase())+'</div><strong>'+escapeHtml(s.name||"Student")+'</strong><span>'+(assignmentWizard.studentId===s.id?"Selected":"Choose student")+'</span></button>').join("")+
-        (students.length?"":'<div class="p7-empty">No students yet. Add a student first.</div>')+'</div></div>';
+        (students.length?"":'<div class="p7-empty">No students yet. Add a student first.<br><button id="p75ManageStudents" class="p7-secondary" type="button" style="margin-top:10px">Manage Students</button></div>')+'</div></div>';
     }else if(step===2){
       body='<div class="p75-step-content"><div class="p75-step-heading"><div class="p7-eyebrow">Step 2 of 4</div><h1>Choose a song</h1><p>'+(student?"For "+escapeHtml(student.name)+". ":"")+'Only songs with an interactive score can be assigned for guided practice.</p></div>'+
         '<input id="p75SongSearch" class="p75-search" type="search" placeholder="Search song library…" />'+
@@ -739,6 +739,7 @@
         assignmentWizard.studentId=b.dataset.wizardStudent;
         renderAssignmentWizard(false);
       });
+      const manageStudents=$("p75ManageStudents"); if(manageStudents) manageStudents.onclick=()=>openAssignments("teacher");
       const next=$("p75WizardNext");
       if(next){ next.disabled=!assignmentWizard.studentId; next.onclick=()=>{ if(!assignmentWizard.studentId)return; assignmentWizard.step=2; renderAssignmentWizard(false); renderWizardSongChoices(""); }; }
     }else if(step===2){
