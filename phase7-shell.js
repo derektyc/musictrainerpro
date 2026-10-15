@@ -10,6 +10,7 @@
   let moved = {};
   let navButtons = [];
   let mobileButtons = [];
+  let selectedTeacherStudentId = "";
 
   const routes = {
     teacher:[
@@ -121,6 +122,7 @@
         <section id="p7PageDashboard" class="p7-page"></section>
         <section id="p7PageHome" class="p7-page"></section>
         <section id="p7PageStudents" class="p7-page"></section>
+        <section id="p7PageStudentProfile" class="p7-page"></section>
         <section id="p7PageAssignments" class="p7-page"></section>
         <section id="p7PageLibrary" class="p7-page"></section>
         <section id="p7PageProgress" class="p7-page"></section>
@@ -202,7 +204,7 @@
 
   function renderStaticPages(){
     $("p7PageStudents").innerHTML=
-      pageHead("Teacher workspace","Students","View and manage student profiles. A full student detail page arrives in Phase 7.4.",
+      pageHead("Teacher workspace","Students","Open a student to review assignments, practice history, progress and teacher notes.",
         '<button id="p7OpenStudents" class="p7-primary" type="button">Open student manager</button>')+
       '<div id="p7StudentDirectory" class="p7-card"></div>';
 
@@ -298,21 +300,182 @@
     return rows.sort((a,b)=>b.time-a.time);
   }
 
-  function openTeacherStudent(studentId){
+  function teacherStudentSessions(assignments){
+    const rows=[];
+    (assignments||[]).forEach(a=>{
+      const p=a&&a.progress?a.progress:{};
+      const sessions=Array.isArray(p.sessions)?p.sessions:[];
+      sessions.forEach(s=>{
+        const t=new Date(s.completedAt||"").getTime();
+        if(!Number.isFinite(t)) return;
+        rows.push({
+          time:t,
+          assignmentId:a.id,
+          songTitle:a.songTitle||"Assignment",
+          practiceMs:Math.max(0,Number(s.practiceMs)||0),
+          highestSpeed:Math.max(0,Number(s.highestSpeed)||0),
+          reps:Math.max(0,Number(s.reps)||0),
+          source:s.source||""
+        });
+      });
+    });
+    return rows.sort((a,b)=>b.time-a.time);
+  }
+
+  function teacherStudentStreak(assignments){
+    const days=new Set();
+    teacherStudentSessions(assignments).forEach(s=>days.add(dateKey(s.time)));
+    if(!days.size) return 0;
+    let cursor=new Date();
+    cursor.setHours(0,0,0,0);
+    if(!days.has(dateKey(cursor))) cursor.setDate(cursor.getDate()-1);
+    let streak=0;
+    while(days.has(dateKey(cursor))){
+      streak++;
+      cursor.setDate(cursor.getDate()-1);
+    }
+    return streak;
+  }
+
+  function openTeacherAssignmentManager(studentId){
     try{
       const api=window.DTMusicTrainerAssignments;
-      if(api && typeof api.setActiveStudent==="function" && studentId){
-        api.setActiveStudent(studentId);
-      }else{
-        const select=$("assignmentStudentSelect");
-        if(select && studentId){
-          select.value=studentId;
-          select.dispatchEvent(new Event("change",{bubbles:true}));
-        }
-      }
+      if(api && typeof api.setActiveStudent==="function" && studentId) api.setActiveStudent(studentId);
     }catch(error){}
     openAssignments("teacher");
   }
+
+  function openTeacherStudent(studentId){
+    if(!session || session.role!=="teacher") return;
+    const data=assignmentData();
+    if(!(data.students||[]).some(s=>s.id===studentId)){
+      navigate("students");
+      return;
+    }
+    selectedTeacherStudentId=studentId;
+    currentRoute="studentprofile";
+    try{localStorage.setItem(ROUTE_KEY,"students");}catch(error){}
+    document.querySelectorAll("#p7Stage > .p7-page").forEach(p=>p.classList.remove("active"));
+    const page=$("p7PageStudentProfile");
+    if(page) page.classList.add("active");
+    navButtons.concat(mobileButtons).forEach(b=>b.classList.toggle("active",b.dataset.route==="students"));
+    renderTeacherStudentProfile();
+  }
+
+  function renderTeacherStudentProfile(){
+    if(!session || session.role!=="teacher") return;
+    const page=$("p7PageStudentProfile");
+    if(!page) return;
+    const data=assignmentData();
+    const student=(data.students||[]).find(s=>s.id===selectedTeacherStudentId);
+    if(!student){
+      navigate("students");
+      return;
+    }
+
+    const assignments=(data.assignments||[]).filter(a=>a.studentId===student.id);
+    const active=assignments.filter(a=>!isCompleted(a));
+    const completed=assignments.filter(isCompleted);
+    const overdue=active.filter(teacherIsOverdue);
+    const sessions=teacherStudentSessions(assignments);
+    const weekStart=teacherWeekStart();
+    const weekSessions=sessions.filter(s=>s.time>=weekStart);
+    const weekMs=weekSessions.reduce((n,s)=>n+Number(s.practiceMs||0),0);
+    const last=teacherLastPractice(assignments);
+    const today=!!(last&&dateKey(last)===todayKey());
+    const streak=teacherStudentStreak(assignments);
+    const best=assignments.reduce((n,a)=>Math.max(n,Number(a.progress&&a.progress.highestSpeed)||0),0);
+    const statusText=today?"Practised today":last?"Last practice "+teacherRelativeTime(last):"No practice recorded";
+    const statusClass=today?"ok":overdue.length?"danger":"";
+
+    const activeCards=active.map(a=>{
+      const s=a.settings||{}, p=a.progress||{}, req=requirementProgress(a);
+      const due=dueLabel(a);
+      const status=assignmentStatus(a);
+      const pct=Math.max(0,Math.min(100,Math.round((Math.min(req.done,req.count)/Math.max(1,req.count))*100)));
+      return '<article class="p74-assignment-card">'+
+        '<div class="p74-assignment-head"><div><span class="p7-assignment-status">'+escapeHtml(status.toUpperCase())+'</span><h3>'+escapeHtml(a.songTitle||"Assignment")+'</h3></div>'+
+        (due?'<span class="p7-due '+(teacherIsOverdue(a)?"overdue":"")+'">'+escapeHtml(due)+'</span>':'')+'</div>'+
+        '<div class="p74-assignment-specs">'+
+          '<span><b>Bars</b> '+(s.startBar||1)+'–'+(s.endBar||1)+'</span>'+
+          '<span><b>Speed</b> '+(s.startSpeed||100)+'% → '+(s.targetSpeed||100)+'%</span>'+
+          '<span><b>Best</b> '+(Number(p.highestSpeed)||0)+'%</span>'+
+          '<span><b>'+escapeHtml(req.label)+'</b> '+Math.min(req.done,req.count)+' / '+req.count+'</span>'+
+        '</div>'+
+        '<div class="p7-goal-track p74-goal-track"><i style="width:'+pct+'%"></i></div>'+
+        (a.note?'<div class="p74-teacher-note-inline">'+escapeHtml(a.note)+'</div>':'')+
+        '<div class="p74-assignment-actions"><button class="p7-secondary" data-profile-manage="'+escapeHtml(a.id)+'" type="button">Manage Assignment</button></div>'+
+      '</article>';
+    }).join("");
+
+    const recentRows=sessions.slice(0,12).map(s=>{
+      const detail=[];
+      if(s.practiceMs) detail.push(fmtMinutes(s.practiceMs));
+      if(s.highestSpeed) detail.push(s.highestSpeed+"%");
+      if(s.reps) detail.push(s.reps+" reps");
+      return '<div class="p74-session-row">'+
+        '<div class="p74-session-date">'+escapeHtml(new Date(s.time).toLocaleDateString(undefined,{day:"numeric",month:"short"}))+'</div>'+
+        '<div class="p7-list-main"><div class="p7-list-title">'+escapeHtml(s.songTitle)+'</div><div class="p7-list-meta">'+escapeHtml(detail.join(" · ")||"Completed session")+'</div></div>'+
+        '<span class="p7-activity-time">'+escapeHtml(teacherRelativeTime(s.time))+'</span></div>';
+    }).join("");
+
+    const historyRows=assignments.slice().sort((a,b)=>String(b.createdAt||"").localeCompare(String(a.createdAt||""))).map(a=>{
+      const status=assignmentStatus(a), p=a.progress||{};
+      return '<button class="p74-history-row" data-profile-manage="'+escapeHtml(a.id)+'" type="button">'+
+        '<div class="p7-list-main"><div class="p7-list-title">'+escapeHtml(a.songTitle||"Assignment")+'</div>'+
+        '<div class="p7-list-meta">'+(a.dueDate?"Due "+escapeHtml(a.dueDate)+" · ":"")+(p.highestSpeed?"Best "+Number(p.highestSpeed)+"%":"No speed recorded")+'</div></div>'+
+        '<span class="p7-attention-pill '+(status==="Completed"?"ok":status==="Overdue"?"danger":"")+'">'+escapeHtml(status)+'</span></button>';
+    }).join("");
+
+    page.innerHTML=
+      '<div class="p74-profile-top">'+
+        '<button id="p74Back" class="p74-back" type="button">← Students</button>'+
+        '<div class="p74-profile-heading"><div class="p74-avatar">'+escapeHtml((student.name||"S").trim().charAt(0).toUpperCase())+'</div>'+
+          '<div><div class="p7-eyebrow">Student profile</div><h1>'+escapeHtml(student.name||"Student")+'</h1><span class="p7-attention-pill '+statusClass+'">'+escapeHtml(statusText)+'</span></div></div>'+
+        '<div class="p74-profile-actions"><button id="p74Manage" class="p7-secondary" type="button">Manage Assignments</button><button id="p74NewAssignment" class="p7-primary" type="button">+ New Assignment</button></div>'+
+      '</div>'+
+      '<div class="p7-metrics p74-metrics">'+
+        metric("This week",fmtMinutes(weekMs),"Completed practice time")+
+        metric("Sessions",weekSessions.length,"Completed this week")+
+        metric("Streak",streak+" day"+(streak===1?"":"s"),"Current practice streak")+
+        metric("Overdue",overdue.length,"Assignments needing attention")+
+      '</div>'+
+      '<div class="p74-profile-grid">'+
+        '<section class="p7-card p74-active"><div class="p7-card-heading"><div><div class="p7-card-title">Active assignments</div><div class="p7-card-sub">'+active.length+' currently active · Highest speed '+(best?best+"%":"—")+'</div></div><span class="p7-count-chip">'+active.length+'</span></div>'+
+          '<div class="p74-assignment-list">'+(activeCards||'<div class="p7-empty">No active assignments.</div>')+'</div></section>'+
+        '<aside class="p7-card p74-notes"><div class="p7-card-title">Teacher notes</div><div class="p7-card-sub">Private notes for your own reference. These sync with the student record.</div>'+
+          '<textarea id="p74Notes" maxlength="4000" placeholder="Lesson focus, technique reminders, goals…">'+escapeHtml(student.teacherNotes||"")+'</textarea>'+
+          '<div class="p74-note-actions"><span id="p74NoteStatus">Up to 4,000 characters</span><button id="p74SaveNotes" class="p7-primary" type="button">Save Notes</button></div></aside>'+
+        '<section class="p7-card p74-recent"><div class="p7-card-title">Recent practice</div><div class="p7-card-sub">Completed sessions, newest first.</div>'+
+          '<div class="p74-session-list">'+(recentRows||'<div class="p7-empty">No completed practice sessions yet.</div>')+'</div></section>'+
+        '<section class="p7-card p74-history"><div class="p7-card-heading"><div><div class="p7-card-title">Assignment history</div><div class="p7-card-sub">'+completed.length+' completed · '+assignments.length+' total</div></div></div>'+
+          '<div class="p74-history-list">'+(historyRows||'<div class="p7-empty">No assignments yet.</div>')+'</div></section>'+
+      '</div>';
+
+    $("p74Back").onclick=()=>navigate("students");
+    $("p74Manage").onclick=()=>openTeacherAssignmentManager(student.id);
+    $("p74NewAssignment").onclick=()=>openTeacherAssignmentManager(student.id);
+    page.querySelectorAll("[data-profile-manage]").forEach(b=>b.onclick=()=>openTeacherAssignmentManager(student.id));
+
+    const notes=$("p74Notes"), save=$("p74SaveNotes"), noteStatus=$("p74NoteStatus");
+    if(notes){
+      notes.addEventListener("input",()=>{
+        if(noteStatus) noteStatus.textContent=notes.value.length.toLocaleString()+" / 4,000";
+      });
+    }
+    if(save){
+      save.onclick=()=>{
+        try{
+          const api=window.DTMusicTrainerAssignments;
+          const ok=api&&typeof api.updateStudentNotes==="function"&&api.updateStudentNotes(student.id,notes?notes.value:"");
+          if(noteStatus) noteStatus.textContent=ok?"Saved · syncing to cloud":"Could not save notes";
+        }catch(error){
+          if(noteStatus) noteStatus.textContent="Could not save notes";
+        }
+      };
+    }
+  }
+
 
   function renderTeacherDashboard(){
     const data=assignmentData();
@@ -610,7 +773,7 @@
     }).join("");
 
     $("p7StudentDirectory").innerHTML=
-      '<div class="p7-card-heading"><div><div class="p7-card-title">All students</div><div class="p7-card-sub">Practice activity and assignment status in one place. Click a student to open their current assignment view.</div></div>'+
+      '<div class="p7-card-heading"><div><div class="p7-card-title">All students</div><div class="p7-card-sub">Practice activity and assignment status in one place. Click a student to open their full profile.</div></div>'+
       '<span class="p7-count-chip">'+students.length+'</span></div>'+
       '<div class="p7-teacher-student-table-head"><span>Student</span><span>Sessions</span><span>Practice time</span><span>Status</span></div>'+
       '<div class="p7-teacher-student-list">'+(rows||'<div class="p7-empty">No students yet.</div>')+'</div>';
@@ -833,7 +996,7 @@
     buildNav();
 
     const sub=document.querySelector(".topbar .sub");
-    if(sub) sub.textContent=session.role==="teacher"?"Phase 7.3 · Teacher Dashboard":"Phase 7.2 · Student Experience";
+    if(sub) sub.textContent=session.role==="teacher"?"Phase 7.4 · Student Profiles":"Phase 7.2 · Student Experience";
 
     let desired="";
     try{desired=localStorage.getItem(ROUTE_KEY)||"";}catch(error){}
@@ -848,12 +1011,14 @@
     if(currentRoute==="dashboard") renderTeacherDashboard();
     if(currentRoute==="home") renderStudentHome();
     if(currentRoute==="students") renderStudents();
+    if(currentRoute==="studentprofile") renderTeacherStudentProfile();
     if(currentRoute==="assignments") renderAssignmentsOverview();
     if(currentRoute==="progress") renderProgress();
   }
 
   window.addEventListener("dtmtp:auth-changed",e=>applySession(e.detail||null));
   window.addEventListener("dtmtp:cloud-data-applied",refreshData);
+  window.addEventListener("dtmtp:student-updated",refreshData);
   window.addEventListener("dtmtp:practice-start",e=>{
     if(session&&session.role==="student"){
       const d=e.detail||{};
