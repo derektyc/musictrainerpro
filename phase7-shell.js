@@ -167,6 +167,7 @@
                   </div>
                 </div>
               </div>
+              <div id="p77PracticeProgress" class="p77-practice-progress" hidden><i id="p77PracticeProgressFill"></i></div>
               <div id="p77EngineHost" class="p77-engine-host"></div>
               <div id="p77ControlDock" class="p77-control-dock">
                 <div class="p77-transport">
@@ -1740,6 +1741,13 @@
         : "";
     }
 
+    const progress=$("p77PracticeProgress"), progressFill=$("p77PracticeProgressFill"), oldProgress=$("practiceProgressFill");
+    if(progress){
+      const showProgress=!!assignment||active;
+      progress.hidden=!showProgress;
+      if(progressFill) progressFill.style.width=oldProgress&&oldProgress.style.width?oldProgress.style.width:"0%";
+    }
+
     const tools=$("p77ToolsToggle");
     if(tools){
       tools.hidden=!!(session&&session.role==="student");
@@ -1793,13 +1801,13 @@
     practiceChromeObserver=new MutationObserver(()=>syncPracticeChrome());
     [
       "viewerTitle","viewerMeta","playBtn","loopBtn","speed","speedValue","zoom","zoomValue","position",
-      "synthModeBtn","backingModeBtn","openPdfBtn","practiceStartBtn","practiceStopBtn","practiceRetryBtn","practiceModeSection"
+      "synthModeBtn","backingModeBtn","openPdfBtn","practiceStartBtn","practiceStopBtn","practiceRetryBtn","practiceModeSection","practiceProgressFill"
     ].forEach(id=>{
       const node=$(id);
       if(node) practiceChromeObserver.observe(node,{attributes:true,childList:true,characterData:true,subtree:true});
     });
 
-    ["dtmtp:practice-start","dtmtp:practice-rep","dtmtp:practice-speed-change","dtmtp:practice-stop","dtmtp:practice-complete","dtmtp:materials-ready"].forEach(name=>{
+    ["dtmtp:practice-start","dtmtp:practice-rep","dtmtp:practice-speed-change","dtmtp:practice-restart-step","dtmtp:practice-stop","dtmtp:practice-complete","dtmtp:materials-ready"].forEach(name=>{
       window.addEventListener(name,()=>setTimeout(syncPracticeChrome,0));
     });
     setTimeout(syncPracticeChrome,0);
