@@ -194,6 +194,11 @@
       <nav id="p7MobileNav" class="p7-mobile-nav"></nav>
     `;
     app.appendChild(shell);
+    $("p7Nav").setAttribute("aria-label","Primary navigation");
+    $("p7MobileNav").setAttribute("aria-label","Primary navigation");
+    $("p7Stage").setAttribute("role","main");
+    $("p7GuideMessage").setAttribute("aria-live","polite");
+    $("p77SongTitle").setAttribute("aria-live","polite");
 
     const libraryPage=$("p7PageLibrary");
     const legacyLibrary=document.createElement("div");
@@ -268,7 +273,7 @@
       '<div id="p7AssignmentOverview" class="p7-card"></div>';
 
     $("p7PageProgress").innerHTML=
-      pageHead("Your practice","Progress","A simple summary for now. Phase 7.3 will expand this into full practice history and progress reporting.","")+
+      pageHead("Your practice","Progress","Review your practice time, completed sessions, streak and recent progress.","")+
       '<div id="p7ProgressSummary"></div>';
 
     $("p7OpenStudents").onclick=()=>openAssignments("teacher");
@@ -1134,7 +1139,7 @@
     }
 
     page.innerHTML='<div class="p75-wizard-shell">'+
-      '<div class="p75-wizard-top"><button id="p75Cancel" class="p74-back" type="button">← Assignments</button><div><div class="p7-eyebrow">Phase 7.5</div><strong>New Assignment</strong></div></div>'+
+      '<div class="p75-wizard-top"><button id="p75Cancel" class="p74-back" type="button">← Assignments</button><div><div class="p7-eyebrow">Assignment wizard</div><strong>New Assignment</strong></div></div>'+
       wizardStepsHtml()+
       (assignmentWizard.error?'<div class="p75-error">'+escapeHtml(assignmentWizard.error)+'</div>':'')+
       body+
@@ -1899,7 +1904,9 @@
       [nav,mobile].forEach((host,index)=>{
         const b=document.createElement("button");
         b.type="button"; b.className="p7-nav-button"; b.dataset.route=route;
-        b.innerHTML='<span class="p7-nav-icon">'+icon+'</span><span>'+label+'</span>';
+        b.setAttribute("aria-label",label);
+        b.title=label;
+        b.innerHTML='<span class="p7-nav-icon" aria-hidden="true">'+icon+'</span><span>'+label+'</span>';
         b.onclick=()=>navigate(route);
         host.appendChild(b);
         (index?mobileButtons:navButtons).push(b);
@@ -1916,15 +1923,34 @@
 
   function navigate(route){
     if(!session) return;
-    if(route!=="library") revokeLibraryAudio();
     if(!validRoute(route)) route=session.role==="teacher"?"dashboard":"home";
+    const previousRoute=currentRoute;
+
+    if(route!=="library") revokeLibraryAudio();
+    if(route!=="practice"){
+      practiceToolsOpen=false;
+      const practicePage=$("p7PagePractice");
+      if(practicePage) practicePage.classList.remove("p77-tools-open");
+    }
+
     currentRoute=route;
     try{localStorage.setItem(ROUTE_KEY,route);}catch(error){}
 
     document.querySelectorAll("#p7Stage > .p7-page").forEach(p=>p.classList.remove("active"));
     const page=$("p7Page"+route.charAt(0).toUpperCase()+route.slice(1));
     if(page) page.classList.add("active");
-    navButtons.concat(mobileButtons).forEach(b=>b.classList.toggle("active",b.dataset.route===route));
+    navButtons.concat(mobileButtons).forEach(b=>{
+      const active=b.dataset.route===route;
+      b.classList.toggle("active",active);
+      if(active) b.setAttribute("aria-current","page");
+      else b.removeAttribute("aria-current");
+    });
+
+    if(previousRoute&&previousRoute!==route){
+      const stage=$("p7Stage");
+      if(stage) stage.scrollTop=0;
+      if(page) page.scrollTop=0;
+    }
 
     if(route==="dashboard") renderTeacherDashboard();
     if(route==="home") renderStudentHome();
@@ -1950,7 +1976,7 @@
     buildNav();
 
     const sub=document.querySelector(".topbar .sub");
-    if(sub) sub.textContent=session.role==="teacher"?"Phase 7.7 · Practice Player":"Phase 7.7 · Practice Player";
+    if(sub) sub.textContent="Phase 7.8 · Final Polish";
 
     let desired="";
     try{desired=localStorage.getItem(ROUTE_KEY)||"";}catch(error){}
@@ -2027,6 +2053,20 @@
   });
   window.addEventListener("dtmtp:cloud-status",()=>{
     if(currentRoute==="library") renderLibraryPage();
+  });
+
+  document.addEventListener("keydown",e=>{
+    if(e.key!=="Escape") return;
+    const completion=$("p7Completion");
+    if(completion){ hideCompletion(); return; }
+    const addOverlay=$("p76AddOverlay");
+    if(addOverlay){ addOverlay.remove(); return; }
+    if(practiceToolsOpen){
+      practiceToolsOpen=false;
+      const practicePage=$("p7PagePractice");
+      if(practicePage) practicePage.classList.remove("p77-tools-open");
+      syncPracticeChrome();
+    }
   });
 
   document.addEventListener("DOMContentLoaded",buildShell);
