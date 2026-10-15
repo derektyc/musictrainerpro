@@ -578,12 +578,14 @@
       note:"",
       countIn:true,
       created:null,
-      error:""
+      error:"",
+      songsLoading:true
     };
     assignmentWizardSongs=[];
     showAssignmentWizardPage();
     renderAssignmentWizard(true);
     await loadAssignmentWizardSongs();
+    if(assignmentWizard) assignmentWizard.songsLoading=false;
     if(currentRoute==="assignmentwizard") renderAssignmentWizard(false);
   }
 
@@ -651,6 +653,7 @@
   function renderAssignmentWizard(loading){
     const page=$("p7PageAssignmentWizard");
     if(!page || !assignmentWizard) return;
+    loading=!!assignmentWizard.songsLoading;
     const data=assignmentData();
     const students=data.students||[];
     const student=wizardStudent();
