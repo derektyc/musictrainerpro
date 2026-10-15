@@ -1644,6 +1644,10 @@
   }
 
   function practiceSessionActive(){
+    try{
+      const api=window.DTMusicTrainerPractice;
+      if(api&&typeof api.getState==="function") return !!api.getState().sessionActive;
+    }catch(error){}
     const section=$("practiceModeSection");
     const stop=$("practiceStopBtn");
     return !!((section&&section.classList.contains("practice-session-active"))||(stop&&!stop.disabled));
