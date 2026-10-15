@@ -210,46 +210,187 @@
     $("p7OpenAssignments").onclick=()=>openAssignments(session&&session.role==="student"?"student":"teacher");
   }
 
+  function teacherLastPractice(list){
+    let latest=0;
+    (list||[]).forEach(a=>{
+      const p=a&&a.progress?a.progress:{};
+      const direct=new Date(p.lastPractisedAt||"").getTime();
+      if(Number.isFinite(direct)) latest=Math.max(latest,direct);
+      const sessions=Array.isArray(p.sessions)?p.sessions:[];
+      sessions.forEach(s=>{
+        const t=new Date(s.completedAt||"").getTime();
+        if(Number.isFinite(t)) latest=Math.max(latest,t);
+      });
+    });
+    return latest;
+  }
+
+  function teacherRelativeTime(value){
+    const t=Number(value)||new Date(value||"").getTime();
+    if(!Number.isFinite(t)||!t) return "No practice yet";
+    const diff=Math.max(0,Date.now()-t);
+    const mins=Math.floor(diff/60000);
+    if(mins<1) return "Just now";
+    if(mins<60) return mins+"m ago";
+    const hours=Math.floor(mins/60);
+    if(hours<24) return hours+"h ago";
+    const days=Math.floor(hours/24);
+    if(days===1) return "Yesterday";
+    if(days<14) return days+" days ago";
+    return new Date(t).toLocaleDateString(undefined,{day:"numeric",month:"short"});
+  }
+
+  function teacherIsOverdue(a){
+    if(!a||isCompleted(a)||!a.dueDate) return false;
+    const due=new Date(a.dueDate+"T23:59:59");
+    return !Number.isNaN(due.getTime()) && Date.now()>due.getTime();
+  }
+
+  function teacherWeekStart(){
+    const d=new Date();
+    d.setHours(0,0,0,0);
+    d.setDate(d.getDate()-((d.getDay()+6)%7));
+    return d.getTime();
+  }
+
+  function teacherSessions(data){
+    const students=new Map((data.students||[]).map(s=>[s.id,s]));
+    const rows=[];
+    (data.assignments||[]).forEach(a=>{
+      const p=a&&a.progress?a.progress:{};
+      const sessions=Array.isArray(p.sessions)?p.sessions:[];
+      sessions.forEach(s=>{
+        const t=new Date(s.completedAt||"").getTime();
+        if(!Number.isFinite(t)) return;
+        const student=students.get(a.studentId);
+        rows.push({
+          time:t,
+          studentId:a.studentId,
+          studentName:student&&student.name?student.name:"Student",
+          songTitle:a.songTitle||"Assignment",
+          practiceMs:Math.max(0,Number(s.practiceMs)||0),
+          highestSpeed:Math.max(0,Number(s.highestSpeed)||0),
+          reps:Math.max(0,Number(s.reps)||0)
+        });
+      });
+    });
+    return rows.sort((a,b)=>b.time-a.time);
+  }
+
+  function openTeacherStudent(studentId){
+    const select=$("assignmentStudentSelect");
+    if(select && studentId){
+      select.value=studentId;
+      select.dispatchEvent(new Event("change",{bubbles:true}));
+    }
+    openAssignments("teacher");
+  }
+
   function renderTeacherDashboard(){
     const data=assignmentData();
     const students=data.students||[];
     const assignments=data.assignments||[];
-    const practiced=new Set(assignments.filter(practicedToday).map(a=>a.studentId));
-    const active=assignments.filter(a=>!isCompleted(a));
-    const overdue=active.filter(a=>{
-      if(!a.dueDate) return false;
-      const due=new Date(a.dueDate+"T23:59:59");
-      return !Number.isNaN(due.getTime()) && Date.now()>due.getTime();
+    const weekStart=teacherWeekStart();
+    const sessions=teacherSessions(data);
+    const weekSessions=sessions.filter(s=>s.time>=weekStart);
+    const weekMinutes=weekSessions.reduce((n,s)=>n+Number(s.practiceMs||0),0);
+    const weekStudents=new Set(weekSessions.map(s=>s.studentId));
+
+    const summaries=students.map(s=>{
+      const mine=assignments.filter(a=>a.studentId===s.id);
+      const active=mine.filter(a=>!isCompleted(a));
+      const overdue=active.filter(teacherIsOverdue);
+      const last=teacherLastPractice(mine);
+      const practicedToday=last && dateKey(last)===todayKey();
+      const inactiveDays=last?Math.floor((Date.now()-last)/86400000):null;
+      let attention="";
+      let priority=0;
+      if(overdue.length){
+        attention=overdue.length+" overdue assignment"+(overdue.length===1?"":"s");
+        priority=3;
+      }else if(active.length && !last){
+        attention="Has assignments but no practice yet";
+        priority=2;
+      }else if(active.length && inactiveDays>=7){
+        attention="No practice for "+inactiveDays+" days";
+        priority=2;
+      }else if(active.length && inactiveDays>=4){
+        attention="Last practice "+inactiveDays+" days ago";
+        priority=1;
+      }
+      return {student:s,mine,active,overdue,last,practicedToday,inactiveDays,attention,priority};
     });
 
-    const studentRows=students.slice(0,6).map(s=>{
-      const mine=assignments.filter(a=>a.studentId===s.id);
-      const last=mine.map(a=>a.progress&&a.progress.lastPractisedAt).filter(Boolean).sort().reverse()[0];
-      const meta=practiced.has(s.id)?"Practised today":last?"Last practice "+new Date(last).toLocaleDateString():"No practice recorded";
-      return '<div class="p7-list-row"><div class="p7-list-main"><div class="p7-list-title">'+escapeHtml(s.name||"Student")+'</div><div class="p7-list-meta">'+mine.filter(a=>!isCompleted(a)).length+' active assignments · '+meta+'</div></div><span class="p7-badge '+(practiced.has(s.id)?"ok":"")+'">'+(practiced.has(s.id)?"Today ✓":"View")+'</span></div>';
+    const practicedTodayCount=summaries.filter(x=>x.practicedToday).length;
+    const active=assignments.filter(a=>!isCompleted(a));
+    const overdue=active.filter(teacherIsOverdue);
+    const attention=summaries.filter(x=>x.priority>0).sort((a,b)=>b.priority-a.priority || (a.last||0)-(b.last||0));
+
+    const attentionRows=attention.slice(0,6).map(x=>{
+      const tone=x.priority>=3?"danger":x.priority===2?"warn":"";
+      return '<button class="p7-teacher-attention-row" data-teacher-student="'+escapeHtml(x.student.id)+'" type="button">'+
+        '<div class="p7-teacher-student-avatar">'+escapeHtml((x.student.name||"S").trim().charAt(0).toUpperCase())+'</div>'+
+        '<div class="p7-list-main"><div class="p7-list-title">'+escapeHtml(x.student.name||"Student")+'</div><div class="p7-list-meta">'+escapeHtml(x.attention)+'</div></div>'+
+        '<span class="p7-attention-pill '+tone+'">'+(x.overdue.length?"Follow up":"Check in")+'</span></button>';
+    }).join("");
+
+    const recentRows=sessions.slice(0,7).map(s=>{
+      const details=[];
+      if(s.practiceMs) details.push(fmtMinutes(s.practiceMs));
+      if(s.highestSpeed) details.push(s.highestSpeed+"%");
+      if(s.reps) details.push(s.reps+" reps");
+      return '<button class="p7-teacher-activity-row" data-teacher-student="'+escapeHtml(s.studentId)+'" type="button">'+
+        '<div class="p7-activity-dot"></div>'+
+        '<div class="p7-list-main"><div class="p7-list-title">'+escapeHtml(s.studentName)+' · '+escapeHtml(s.songTitle)+'</div>'+
+        '<div class="p7-list-meta">'+escapeHtml(details.join(" · ")||"Completed practice session")+'</div></div>'+
+        '<span class="p7-activity-time">'+escapeHtml(teacherRelativeTime(s.time))+'</span></button>';
+    }).join("");
+
+    const dueSoon=active.filter(a=>a.dueDate).sort((a,b)=>String(a.dueDate).localeCompare(String(b.dueDate))).slice(0,5);
+    const studentMap=new Map(students.map(s=>[s.id,s]));
+    const dueRows=dueSoon.map(a=>{
+      const who=studentMap.get(a.studentId);
+      const due=dueLabel(a)||("Due "+a.dueDate);
+      return '<button class="p7-teacher-due-row" data-teacher-student="'+escapeHtml(a.studentId)+'" type="button">'+
+        '<div class="p7-list-main"><div class="p7-list-title">'+escapeHtml(a.songTitle||"Assignment")+'</div>'+
+        '<div class="p7-list-meta">'+escapeHtml((who&&who.name)||"Student")+'</div></div>'+
+        '<span class="p7-due '+(teacherIsOverdue(a)?"overdue":"")+'">'+escapeHtml(due)+'</span></button>';
     }).join("");
 
     $("p7PageDashboard").innerHTML=
-      pageHead("Teacher dashboard","Welcome back, "+escapeHtml((session&&session.displayName)||"Teacher"),"A cleaner overview of your studio. Phase 7.3 will add deeper analytics and activity history.",
+      pageHead("Teacher dashboard","Welcome back, "+escapeHtml((session&&session.displayName)||"Teacher"),"See who is practising, who needs attention, and what is coming up — without opening each student one by one.",
         '<button id="p7DashAssign" class="p7-primary" type="button">+ New assignment</button>')+
-      '<div class="p7-metrics">'+
+      '<div class="p7-metrics p7-teacher-metrics">'+
         metric("Students",students.length,"Current profiles")+
-        metric("Practised today",practiced.size,"Across all students")+
-        metric("Active assignments",active.length,"Still in progress")+
-        metric("Overdue",overdue.length,"Need attention")+
+        metric("Practised today",practicedTodayCount,"Students active today")+
+        metric("This week",weekStudents.size,"Students practised")+
+        metric("Overdue",overdue.length,"Assignments to follow up")+
       '</div>'+
-      '<div class="p7-grid">'+
-        '<div class="p7-card"><div class="p7-card-title">Students</div><div class="p7-card-sub">Quick view of recent practice activity.</div><div class="p7-list">'+(studentRows||'<div class="p7-empty">No students yet.</div>')+'</div></div>'+
-        '<div class="p7-card"><div class="p7-card-title">Quick actions</div><div class="p7-card-sub">Jump straight to the task you need.</div><div class="p7-quick-grid">'+
-          '<button class="p7-quick" data-p7-go="students"><strong>Students</strong><span>Profiles and practice status</span></button>'+
+      '<div class="p7-teacher-week-card">'+
+        '<div><div class="p7-eyebrow">This week</div><strong>'+weekSessions.length+'</strong><span>completed sessions</span></div>'+
+        '<div><strong>'+fmtMinutes(weekMinutes)+'</strong><span>recorded session time</span></div>'+
+        '<div><strong>'+active.length+'</strong><span>active assignments</span></div>'+
+        '<button id="p7TeacherAllStudents" class="p7-secondary" type="button">View all students</button>'+
+      '</div>'+
+      '<div class="p7-teacher-dashboard-grid">'+
+        '<section class="p7-card p7-teacher-attention"><div class="p7-card-heading"><div><div class="p7-card-title">Needs attention</div><div class="p7-card-sub">Overdue work and students who have gone quiet.</div></div><span class="p7-count-chip">'+attention.length+'</span></div>'+
+          '<div class="p7-teacher-list">'+(attentionRows||'<div class="p7-empty">Nothing urgent right now. Nice.</div>')+'</div></section>'+
+        '<section class="p7-card"><div class="p7-card-title">Recent practice</div><div class="p7-card-sub">Latest completed student sessions.</div>'+
+          '<div class="p7-teacher-list">'+(recentRows||'<div class="p7-empty">No completed practice sessions yet.</div>')+'</div></section>'+
+        '<section class="p7-card"><div class="p7-card-title">Assignments coming up</div><div class="p7-card-sub">Closest due dates first.</div>'+
+          '<div class="p7-teacher-list">'+(dueRows||'<div class="p7-empty">No assignments with due dates.</div>')+'</div></section>'+
+        '<section class="p7-card"><div class="p7-card-title">Quick actions</div><div class="p7-card-sub">Get to the common jobs quickly.</div><div class="p7-quick-grid">'+
+          '<button class="p7-quick" data-p7-go="students"><strong>Students</strong><span>See the whole class at a glance</span></button>'+
           '<button class="p7-quick" data-p7-open-assign><strong>Assign work</strong><span>Create or manage assignments</span></button>'+
           '<button class="p7-quick" data-p7-go="library"><strong>Song library</strong><span>Scores and backing tracks</span></button>'+
-          '<button class="p7-quick" data-p7-go="practice"><strong>Practice tools</strong><span>Score player and advanced tools</span></button>'+
-        '</div></div>'+
+          '<button class="p7-quick" data-p7-go="practice"><strong>Practice tools</strong><span>Open the score player</span></button>'+
+        '</div></section>'+
       '</div>';
 
     const assign=$("p7DashAssign"); if(assign) assign.onclick=()=>openAssignments("teacher");
+    const allStudents=$("p7TeacherAllStudents"); if(allStudents) allStudents.onclick=()=>navigate("students");
     $("p7PageDashboard").querySelectorAll("[data-p7-go]").forEach(b=>b.onclick=()=>navigate(b.dataset.p7Go));
+    $("p7PageDashboard").querySelectorAll("[data-teacher-student]").forEach(b=>b.onclick=()=>openTeacherStudent(b.dataset.teacherStudent));
     const quick=$("p7PageDashboard").querySelector("[data-p7-open-assign]"); if(quick) quick.onclick=()=>openAssignments("teacher");
   }
 
@@ -409,13 +550,44 @@
 
   function renderStudents(){
     const data=assignmentData();
-    const rows=(data.students||[]).map(s=>{
-      const mine=(data.assignments||[]).filter(a=>a.studentId===s.id);
-      const active=mine.filter(a=>!isCompleted(a)).length;
-      const today=mine.some(practicedToday);
-      return '<div class="p7-list-row"><div class="p7-list-main"><div class="p7-list-title">'+escapeHtml(s.name||"Student")+'</div><div class="p7-list-meta">'+active+' active assignment'+(active===1?"":"s")+'</div></div><span class="p7-badge '+(today?"ok":"")+'">'+(today?"Practised today":"Open")+'</span></div>';
+    const students=data.students||[];
+    const assignments=data.assignments||[];
+    const weekStart=teacherWeekStart();
+
+    const rows=students.map(s=>{
+      const mine=assignments.filter(a=>a.studentId===s.id);
+      const active=mine.filter(a=>!isCompleted(a));
+      const overdue=active.filter(teacherIsOverdue);
+      const last=teacherLastPractice(mine);
+      const weekSessions=[];
+      mine.forEach(a=>{
+        const sessions=a&&a.progress&&Array.isArray(a.progress.sessions)?a.progress.sessions:[];
+        sessions.forEach(x=>{
+          const t=new Date(x.completedAt||"").getTime();
+          if(Number.isFinite(t)&&t>=weekStart) weekSessions.push(x);
+        });
+      });
+      const weekMs=weekSessions.reduce((n,x)=>n+Number(x.practiceMs||0),0);
+      const today=last&&dateKey(last)===todayKey();
+      let status=today?"Practised today":last?teacherRelativeTime(last):"No practice yet";
+      let cls=today?"ok":"";
+      if(overdue.length){status=overdue.length+" overdue";cls="danger";}
+      return '<button class="p7-teacher-student-row" data-teacher-student="'+escapeHtml(s.id)+'" type="button">'+
+        '<div class="p7-teacher-student-avatar">'+escapeHtml((s.name||"S").trim().charAt(0).toUpperCase())+'</div>'+
+        '<div class="p7-teacher-student-name"><strong>'+escapeHtml(s.name||"Student")+'</strong><span>'+active.length+' active assignment'+(active.length===1?"":"s")+'</span></div>'+
+        '<div class="p7-teacher-student-week"><strong>'+weekSessions.length+'</strong><span>sessions this week</span></div>'+
+        '<div class="p7-teacher-student-week"><strong>'+fmtMinutes(weekMs)+'</strong><span>session time</span></div>'+
+        '<span class="p7-attention-pill '+cls+'">'+escapeHtml(status)+'</span>'+
+        '<span class="p7-row-arrow">›</span></button>';
     }).join("");
-    $("p7StudentDirectory").innerHTML='<div class="p7-card-title">Student directory</div><div class="p7-card-sub">Phase 7.4 will turn each row into a full student profile.</div><div class="p7-list">'+(rows||'<div class="p7-empty">No students yet.</div>')+'</div>';
+
+    $("p7StudentDirectory").innerHTML=
+      '<div class="p7-card-heading"><div><div class="p7-card-title">All students</div><div class="p7-card-sub">Practice activity and assignment status in one place. Click a student to open their current assignment view.</div></div>'+
+      '<span class="p7-count-chip">'+students.length+'</span></div>'+
+      '<div class="p7-teacher-student-table-head"><span>Student</span><span>Sessions</span><span>Practice time</span><span>Status</span></div>'+
+      '<div class="p7-teacher-student-list">'+(rows||'<div class="p7-empty">No students yet.</div>')+'</div>';
+
+    $("p7StudentDirectory").querySelectorAll("[data-teacher-student]").forEach(b=>b.onclick=()=>openTeacherStudent(b.dataset.teacherStudent));
   }
 
   function renderAssignmentsOverview(){
@@ -633,7 +805,7 @@
     buildNav();
 
     const sub=document.querySelector(".topbar .sub");
-    if(sub) sub.textContent="Phase 7.2 · Student Experience";
+    if(sub) sub.textContent=session.role==="teacher"?"Phase 7.3 · Teacher Dashboard":"Phase 7.2 · Student Experience";
 
     let desired="";
     try{desired=localStorage.getItem(ROUTE_KEY)||"";}catch(error){}
