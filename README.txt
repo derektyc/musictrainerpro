@@ -1,56 +1,75 @@
-DT Music Trainer Pro — Phase 4
+DT Music Trainer Pro — Phase 7.8
 
 Repository scope
-- This build lives only in derektyc/musictrainerpro.
+- This application lives only in derektyc/musictrainerpro.
 - The original derektyc/musictrainer repository is not modified.
 
-PHASE 4 — PRACTICE MODE
-Phase 4 adds guided section practice on top of the working interactive-score and synced-backing player.
+CURRENT APPLICATION
+Phase 7 is the full application redesign around the existing working music/practice engines.
 
-PRACTICE SETTINGS
-- Start bar / end bar
-- Starting speed
-- Target speed
-- Speed increment
-- Number of successful reps required before increasing speed
-- Optional count-in
+Teacher navigation
+- Dashboard
+- Students
+- Assignments
+- Library
+- Practice
 
-PRACTICE FLOW
-1. Select a song and Open Interactive.
-2. Choose Synth or Synced Backing.
-3. Set the practice bars and speed plan.
-4. Press Start Practice.
-5. The selected section is looped automatically.
-6. After a clean run, press Successful Rep.
-7. After the required number of reps, the app automatically moves to the next speed step.
-8. Retry Section restarts the same section without counting a success.
-9. Reset Progress returns the session to the starting speed.
-10. The session is complete after the required reps are cleared at the target speed.
+Student navigation
+- Home
+- Assignments
+- Practice
+- Progress
 
-PRACTICE MODE FEATURES
-- Works with Synth playback.
-- Works with Synced Backing playback.
-- Uses the existing bar-loop engine.
-- Uses the existing 25–150% speed controls.
-- Synth mode uses alphaTab count-in.
-- Synced Backing mode uses a visual/audio 4-count before a run or new speed step.
-- Per-song practice settings are remembered locally in IndexedDB.
-- Progress panel shows current speed, reps and target progression.
-- Successful Rep is intentionally manual: the app does not pretend to know whether the student played a run correctly yet. Performance listening/scoring can be added in a later phase.
+PHASE 7 FEATURES
+7.1 Application shell
+- Dedicated teacher/student navigation.
+- Desktop sidebar and responsive bottom navigation.
+- Existing engines are mounted inside the new application shell.
 
-PHASE 3 RETAINED
-- Real MP3/WAV backing track can drive the notation cursor.
-- Automatic whole-song sync plus manual bar sync points.
-- Seeking updates the score position.
-- Synced bar looping and speed changes.
-- Sync points are included in Library ZIP backups.
+7.2 Student experience
+- Today's assignment and guided practice entry.
+- Student assignment list, practice guidance, completion summary and progress history.
+- Automatic repetition / speed progression remains powered by the existing Practice engine.
 
-PHASE 2 RETAINED
-- Local song library using IndexedDB.
-- One song can contain PDF + interactive score + MP3/WAV.
-- Automatic grouping by matching title.
-- Save Library ZIP / Load Library ZIP.
-- No Google Drive or Google login.
+7.3 Teacher dashboard
+- Student activity, assignment attention items and weekly practice overview.
+
+7.4 Student profiles
+- Active assignments, recent practice, assignment history and teacher-only notes.
+- Teacher-only notes are kept on the teacher account rather than student-readable records.
+
+7.5 Assignment wizard
+- Guided Student → Song → Practice → Review workflow.
+- Existing Advanced Manager remains available for compatibility operations.
+
+7.6 Song Library
+- Searchable catalogue with Interactive / PDF / Backing / Assigned / Incomplete filters.
+- Add Song, bulk drag-and-drop grouping, asset replacement, previews and Library Health.
+- Assigned-song deletion safeguards.
+- Library → Assign integrates directly with the assignment wizard.
+- Save Library ZIP / Load Library ZIP remains available.
+
+7.7 Practice player
+- Score-first practice screen.
+- Simplified Play, Restart, Loop, Speed, Zoom, Synth/Backing, PDF and Guided Practice controls.
+- Teacher Advanced Tools are hidden until requested.
+- Student practice remains intentionally simplified.
+- Count-in appears at the top-left of the score without blurring the notation.
+
+7.8 Final polish
+- Tablet/phone shell switches to bottom navigation before the desktop sidebar becomes cramped.
+- Dynamic viewport sizing and safe-area support for mobile browser/PWA-style use.
+- Mobile form anti-zoom, touch-target and overflow hardening.
+- Small-phone and landscape practice refinements.
+- Keyboard focus states, aria-current navigation, dialog semantics and reduced-motion support.
+- Old phase-number copy removed from the normal UI.
+
+STORAGE AND CLOUD ARCHITECTURE
+- Local song library: IndexedDB.
+- Teacher/student accounts and assignment/progress sync: Firebase Authentication + Firestore.
+- Assigned song materials: existing Google Drive publishing flow.
+- Student devices download/cache assigned materials locally.
+- Firebase Storage is not used.
 
 SUPPORTED INTERACTIVE SCORE FILES
 - .gp
@@ -60,19 +79,15 @@ SUPPORTED INTERACTIVE SCORE FILES
 - .mxl
 - .xml
 
+OTHER SUPPORTED MATERIALS
+- PDF
+- MP3
+- WAV
+
 MuseScore native .mscz files are not opened directly. Export them as MusicXML first.
 
-PHASE 4 TEST
-Use DT Test Groove:
-1. Open DT Test Groove Interactive.
-2. Start in Synth mode.
-3. Practice bars 5–8 from 60% to 80%, +10%, 2 successful reps per step.
-4. Confirm speed moves 60 → 70 → 80 after the selected reps.
-5. Confirm Retry does not add a successful rep.
-6. Reset Progress and confirm it returns to 60%.
-7. Switch to Synced Backing and repeat the same test.
-8. Confirm the backing track follows the selected loop and changes playback speed.
-9. Change the practice settings, select another song, then return and confirm the previous settings are remembered on this device.
+TESTING
+Automated/source-level regression results and checks that require a real authenticated browser session are tracked in:
+PHASE7_TESTING.md
 
-NEXT DIRECTION
-Once Practice Mode is stable, the next logical layer is assignments and student progress: teacher-selected song/section/speed targets, completion history, practice minutes and student/parent views.
+The live-check list is intentionally retained so Firebase, Google Drive, audio playback, real device sizing and student/teacher account behaviour can be verified later without losing track of outstanding tests.
