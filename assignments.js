@@ -583,6 +583,68 @@
     toast("Current Practice Mode settings copied.");
   }
 
+  function createAssignmentFromPayload(payload){
+    const input = payload || {};
+    const student = data.students.find(s => s.id === input.studentId);
+    if(!student) throw new Error("Choose a student.");
+
+    const songId = String(input.songId || "").trim();
+    if(!songId) throw new Error("Choose a song.");
+    const librarySong = songs.find(s => s.id === songId);
+    const songTitle = String(input.songTitle || (librarySong && librarySong.title) || "Untitled Song").trim() || "Untitled Song";
+
+    let startBar = Math.max(1,Math.round(Number(input.startBar)||1));
+    let endBar = Math.max(1,Math.round(Number(input.endBar)||startBar));
+    if(endBar < startBar) [startBar,endBar] = [endBar,startBar];
+
+    const startSpeed = Math.max(25,Math.min(150,Math.round(Number(input.startSpeed)||60)));
+    const targetSpeed = Math.max(startSpeed,Math.min(150,Math.round(Number(input.targetSpeed)||100)));
+    const increment = Math.max(1,Math.min(25,Math.round(Number(input.increment)||5)));
+    const repsPerStep = Math.max(1,Math.min(20,Math.round(Number(input.repsPerStep)||3)));
+    const requirementCount = Math.max(1,Math.min(20,Math.round(Number(input.requirementCount)||1)));
+    const requirementPeriod = ["day","week","total"].includes(input.requirementPeriod) ? input.requirementPeriod : "day";
+    const source = ["either","synth","backing"].includes(input.source) ? input.source : "either";
+
+    const assignment = {
+      id:makeId("assignment"),
+      studentId:student.id,
+      songId,
+      songTitle,
+      createdAt:new Date().toISOString(),
+      dueDate:String(input.dueDate || ""),
+      note:String(input.note || "").trim().slice(0,2000),
+      source,
+      requirement:{count:requirementCount,period:requirementPeriod},
+      settings:{
+        startBar,
+        endBar,
+        startSpeed,
+        targetSpeed,
+        increment,
+        repsPerStep,
+        countIn:input.countIn !== false
+      },
+      progress:{
+        status:"Not Started",
+        highestSpeed:0,
+        repsCompleted:0,
+        practiceMs:0,
+        lastPractisedAt:"",
+        completedAt:"",
+        sessions:[]
+      }
+    };
+
+    data.activeStudentId = student.id;
+    data.assignments.push(assignment);
+    saveData();
+    window.dispatchEvent(new CustomEvent("dtmtp:assignment-created",{
+      detail:{assignmentId:assignment.id,studentId:assignment.studentId,songId:assignment.songId}
+    }));
+    toast("Assignment created for " + student.name + ". Uploading song materials to cloud…");
+    return JSON.parse(JSON.stringify(assignment));
+  }
+
   function createAssignment(){
     const student = activeStudent();
     if(!student){ toast("Add a student first."); return; }
@@ -887,6 +949,7 @@
     getData:() => JSON.parse(JSON.stringify(data)),
     getActiveStudent:() => activeStudent(),
     setActiveStudent:id => setActiveStudent(id),
+    createAssignment:payload => createAssignmentFromPayload(payload),
     getStatus:id => {
       const a = data.assignments.find(x => x.id === id);
       return a ? assignmentStatus(a) : "";
