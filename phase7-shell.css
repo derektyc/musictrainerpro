@@ -210,3 +210,12 @@ body.role-student #authAccountBtn{font-size:10px}
   .p7-student-hero{padding:16px}
   .p7-student-hero h2{font-size:20px}
 }
+
+.p7-practice-top-actions{display:flex;gap:7px;align-items:center;flex-wrap:wrap}
+body.role-student .p7-practice-tools details:not(:first-child){display:none}
+body.role-student .p7-practice-body{grid-template-columns:minmax(0,1fr) 290px}
+@media(max-width:780px){
+  .p7-practice-top-actions{gap:5px}
+  .p7-practice-top-actions .p7-primary,.p7-practice-top-actions .p7-secondary{padding:7px 9px;font-size:9px}
+  body.role-student .p7-practice-body{grid-template-columns:1fr}
+}
