@@ -148,6 +148,12 @@ Automated checks already passed:
 - Phase 7.4 profiles, Phase 7.5 assignment wizard and Phase 7.6 Library remain present.
 - Main JavaScript files and Phase 7 CSS parse/balance checks pass.
 
+Bugs found and fixed during Phase 7.7 testing:
+- Anchored the teacher mobile Advanced Tools drawer to the Practice page so it does not position against the wrong viewport.
+- Kept PDF access visible on small screens instead of hiding an important student action.
+- Switched active-session detection to DTMusicTrainerPractice.getState when available instead of inferring only from disabled buttons.
+- Forced Advanced Tools closed whenever a student role is applied, even if a teacher previously left the drawer open.
+
 Pending live checks:
 - Open an assignment as a student and confirm the correct song title, bars and speed target appear in the new score header.
 - Confirm Start Practice changes to Stop Practice while a guided session is active and changes back afterward.
