@@ -512,3 +512,90 @@ body.role-student .p7-practice-main .viewer-head{padding:8px 11px}
   .p7-teacher-student-row .p7-row-arrow{display:none}
   .p7-attention-pill{max-width:108px;overflow:hidden;text-overflow:ellipsis}
 }
+
+
+/* ==========================================
+   PHASE 7.4 · STUDENT PROFILES
+========================================== */
+#p7PageStudentProfile{max-width:1280px;margin:0 auto}
+.p74-profile-top{
+  display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:16px;align-items:center;margin-bottom:18px
+}
+.p74-back{
+  border:1px solid var(--p7-line);background:#282829;color:#d7d7d3;border-radius:10px;
+  padding:9px 11px;font-size:10px;font-weight:800;cursor:pointer
+}
+.p74-profile-heading{display:flex;align-items:center;gap:13px;min-width:0}
+.p74-profile-heading h1{margin:3px 0 6px;font-size:25px;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.p74-avatar{
+  width:52px;height:52px;flex:0 0 52px;border-radius:16px;display:grid;place-items:center;
+  border:1px solid #4b4b4d;background:#303031;color:#f2f2ee;font-size:18px;font-weight:900
+}
+.p74-profile-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.p74-metrics{margin-bottom:14px}
+.p74-profile-grid{
+  display:grid;grid-template-columns:minmax(0,1.25fr) minmax(290px,.75fr);gap:14px;align-items:start
+}
+.p74-active{grid-row:span 2}
+.p74-assignment-list{display:flex;flex-direction:column;gap:10px}
+.p74-assignment-card{
+  border:1px solid #3d3d3f;background:#242425;border-radius:14px;padding:14px
+}
+.p74-assignment-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.p74-assignment-head h3{margin:5px 0 0;font-size:14px}
+.p74-assignment-specs{
+  display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 10px
+}
+.p74-assignment-specs span{
+  background:#2c2c2d;border:1px solid #3d3d3f;border-radius:999px;padding:6px 8px;
+  color:#bdbdb9;font-size:9px
+}
+.p74-assignment-specs b{color:#ecece8}
+.p74-goal-track{margin-top:2px}
+.p74-teacher-note-inline{
+  margin-top:10px;border-left:2px solid #705936;padding:8px 10px;background:#292723;
+  color:#c9c3b9;font-size:9px;line-height:1.45;border-radius:0 9px 9px 0
+}
+.p74-assignment-actions{display:flex;justify-content:flex-end;margin-top:11px}
+.p74-assignment-actions .p7-secondary{padding:7px 10px;font-size:9px}
+
+.p74-notes textarea{
+  width:100%;min-height:170px;resize:vertical;box-sizing:border-box;background:#202021;color:#eee;
+  border:1px solid #414143;border-radius:12px;padding:11px;font:inherit;font-size:11px;line-height:1.5;outline:none
+}
+.p74-notes textarea:focus{border-color:#705936}
+.p74-note-actions{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:9px}
+.p74-note-actions span{font-size:8px;color:#858583}
+.p74-note-actions .p7-primary{padding:8px 11px;font-size:9px}
+
+.p74-session-list,.p74-history-list{display:flex;flex-direction:column;gap:7px}
+.p74-session-row,.p74-history-row{
+  display:flex;align-items:center;gap:10px;border:1px solid #39393b;background:#242425;border-radius:11px;
+  padding:9px 10px
+}
+.p74-session-date{width:48px;flex:0 0 48px;font-size:9px;font-weight:850;color:#c7c7c3}
+.p74-history-row{width:100%;color:inherit;text-align:left;cursor:pointer}
+.p74-history-row:hover{background:#29292a;border-color:#515153}
+.p74-history-row .p7-attention-pill{margin-left:auto}
+
+@media(max-width:1000px){
+  .p74-profile-grid{grid-template-columns:1fr}
+  .p74-active{grid-row:auto}
+}
+@media(max-width:760px){
+  #p7PageStudentProfile{padding-bottom:24px}
+  .p74-profile-top{grid-template-columns:1fr;align-items:start}
+  .p74-back{justify-self:start}
+  .p74-profile-actions{justify-content:flex-start}
+  .p74-profile-actions .p7-primary,.p74-profile-actions .p7-secondary{flex:1}
+  .p74-profile-heading h1{font-size:22px}
+  .p74-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:480px){
+  .p74-avatar{width:44px;height:44px;flex-basis:44px;border-radius:13px}
+  .p74-profile-actions{display:grid;grid-template-columns:1fr 1fr;width:100%}
+  .p74-assignment-head{flex-direction:column}
+  .p74-session-row{align-items:flex-start}
+  .p74-session-row .p7-activity-time{margin-left:auto}
+  .p74-note-actions{align-items:flex-end}
+}
