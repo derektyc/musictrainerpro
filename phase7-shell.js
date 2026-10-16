@@ -305,8 +305,13 @@
   function libraryCloudLabel(song){
     if(!song) return {text:"",cls:""};
     if(song._cloud){
-      if(libraryDriveConnected()) return {text:"Drive master",cls:"ok"};
-      return {text:"Cloud catalogue · reconnect to open",cls:"warn"};
+      if(song._masterReady){
+        if(libraryDriveConnected()) return {text:"Drive master",cls:"ok"};
+        return {text:"Drive master · reconnect to open",cls:"warn"};
+      }
+      return libraryDriveConnected()
+        ? {text:"Legacy cloud copy · syncing master",cls:"warn"}
+        : {text:"Legacy cloud copy · reconnect to migrate",cls:"warn"};
     }
     if(libraryDriveConnected()) return {text:"Local changes · syncing",cls:"warn"};
     return {text:"Local only · connect Drive",cls:"warn"};
@@ -460,7 +465,9 @@
           '<div class="p76-detail-actions"><button id="p76AssignSong" class="p7-primary" type="button" '+(selected.interactive?"":"disabled")+'>Assign</button><button id="p76RenameSong" class="p7-secondary" type="button">Rename</button></div></div>'+
         '<div class="p76-cloud-card"><div><span>Library source</span><strong>'+escapeHtml(cloud.text)+'</strong></div><p>'+
           (selected._cloud
-            ? (libraryDriveConnected()?"The master files are in Google Drive. Opening a score, PDF or backing track caches only that file on this device.":"The cloud catalogue is visible, but reconnect Google Drive before opening uncached files.")
+            ? (selected._masterReady
+                ? (libraryDriveConnected()?"The master files are in Google Drive. Opening a score, PDF or backing track caches only that file on this device.":"The Drive master is listed here, but reconnect Google Drive before opening uncached files.")
+                : (libraryDriveConnected()?"This older cloud song is still being migrated into the private Drive Library folder.":"This older cloud song can remain visible from its catalogue metadata. Reconnect Drive to finish migrating it into the master Library."))
             : (libraryDriveConnected()?"This local song is waiting to finish syncing into the Drive Library.":"This song currently exists only on this device. Connect Google Drive to make it part of the master Library."))+
         '</p></div>'+
         '<div class="p76-detail-section"><div class="p76-section-head"><strong>Teaching materials</strong><span>'+[selected.interactive,selected.pdf,selected.audio].filter(Boolean).length+' / 3 attached</span></div>'+
