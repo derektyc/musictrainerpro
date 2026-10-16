@@ -15,9 +15,11 @@
   const DRIVE_CONNECTED_KEY = "dtmtp-pro-drive-connected-v1";
   const DRIVE_TOKEN_KEY = "dtmtp-pro-drive-token-v1";
   const DRIVE_TOKEN_EXPIRY_KEY = "dtmtp-pro-drive-token-expiry-v1";
+  const DRIVE_SESSION_ACTIVE_KEY = "dtmtp-pro-drive-session-active-v1";
 
   let session = null;
   let googleTokenClient = null;
+  let tokenRefreshPromise = null;
   let driveToken = "";
   let driveRootId = "";
   let libraryFolderId = "";
@@ -126,6 +128,7 @@
     try{
       sessionStorage.setItem(DRIVE_TOKEN_KEY,driveToken);
       sessionStorage.setItem(DRIVE_TOKEN_EXPIRY_KEY,String(expiry));
+      sessionStorage.setItem(DRIVE_SESSION_ACTIVE_KEY,"1");
     }catch(error){}
   }
 
@@ -152,6 +155,58 @@
       sessionStorage.removeItem(DRIVE_TOKEN_KEY);
       sessionStorage.removeItem(DRIVE_TOKEN_EXPIRY_KEY);
     }catch(error){}
+  }
+
+  function driveSessionActive(){
+    try{return sessionStorage.getItem(DRIVE_SESSION_ACTIVE_KEY)==="1";}catch(error){return false;}
+  }
+
+  async function ensureDriveToken(){
+    if(driveToken||restoreToken()) return driveToken;
+    if(!driveSessionActive()||!localStorage.getItem(DRIVE_CONNECTED_KEY)){
+      throw new Error("Connect Google Drive from Cloud Account first.");
+    }
+    if(!(window.google&&google.accounts&&google.accounts.oauth2)){
+      throw new Error("Google sign-in is still loading. Try again in a moment.");
+    }
+    if(tokenRefreshPromise) return tokenRefreshPromise;
+
+    tokenRefreshPromise=new Promise((resolve,reject)=>{
+      const silentClient=google.accounts.oauth2.initTokenClient({
+        client_id:GOOGLE_CLIENT_ID,
+        scope:DRIVE_SCOPE,
+        callback:response=>{
+          if(!response||response.error||!response.access_token){
+            reject(new Error("Google Drive session needs to be reconnected."));
+            return;
+          }
+          storeToken(response);
+          resolve(driveToken);
+        },
+        error_callback:()=>reject(new Error("Google Drive session needs to be reconnected."))
+      });
+      try{silentClient.requestAccessToken({prompt:""});}
+      catch(error){reject(error);}
+    }).finally(()=>{tokenRefreshPromise=null;});
+
+    return tokenRefreshPromise;
+  }
+
+  async function restoreDriveSessionAndSync(){
+    if(!(session&&session.role==="teacher")) return false;
+    try{
+      await ensureDriveToken();
+      const btn=$("dtmtpDriveConnectBtn");
+      if(btn) btn.textContent="Google Drive Connected";
+      setDriveStatus("Google Drive Library connected","synced");
+      await ensureDriveFolders();
+      await syncTeacherLibrary();
+      await publishAssignedSongs();
+      return true;
+    }catch(error){
+      setDriveStatus("Reconnect Google Drive to continue cloud Library access","pending");
+      return false;
+    }
   }
 
   function initGoogleTokenClient(){
@@ -184,6 +239,9 @@
         setDriveStatus("Google Drive reconnect required","error");
       }
     });
+    if(!driveToken&&driveSessionActive()&&localStorage.getItem(DRIVE_CONNECTED_KEY)){
+      setTimeout(()=>restoreDriveSessionAndSync(),0);
+    }
     return true;
   }
 
@@ -203,19 +261,30 @@
   }
 
   async function driveFetch(url,options){
-    if(!driveToken && !restoreToken()) throw new Error("Connect Google Drive from Cloud Account first.");
-    const response = await fetch(url,{
+    await ensureDriveToken();
+
+    const request=async()=>fetch(url,{
       ...(options||{}),
       headers:{
         Authorization:"Bearer " + driveToken,
         ...((options&&options.headers)||{})
       }
     });
+
+    let response=await request();
+    if(response.status===401&&driveSessionActive()){
+      clearToken();
+      try{
+        await ensureDriveToken();
+        response=await request();
+      }catch(error){}
+    }
+
     if(!response.ok){
-      const detail = await response.text().catch(()=>"");
-      if(response.status === 401) clearToken();
-      const error = new Error("Google Drive " + response.status + (detail ? " · " + detail.slice(0,300) : ""));
-      error.status = response.status;
+      const detail=await response.text().catch(()=>"");
+      if(response.status===401) clearToken();
+      const error=new Error("Google Drive "+response.status+(detail?" · "+detail.slice(0,300):""));
+      error.status=response.status;
       throw error;
     }
     return response;
@@ -1092,6 +1161,8 @@
             await publishAssignedSongs();
           }catch(error){console.error("Startup Drive Library sync failed",error);}
         },600);
+      }else if(driveSessionActive()&&localStorage.getItem(DRIVE_CONNECTED_KEY)){
+        setDriveStatus("Restoring Google Drive Library session…","syncing");
       }else{
         setDriveStatus("Connect Google Drive to sync the teacher Library","pending");
       }
@@ -1156,7 +1227,7 @@
     deleteLibrarySong,
     connectGoogleDrive,
     getSession:()=>session,
-    isDriveConnected:()=>!!(driveToken||restoreToken()),
+    isDriveConnected:()=>!!(driveToken||restoreToken()||(driveSessionActive()&&localStorage.getItem(DRIVE_CONNECTED_KEY))),
     getDriveFolders:()=>({driveRootId,libraryFolderId,materialsFolderId})
   };
 })();
