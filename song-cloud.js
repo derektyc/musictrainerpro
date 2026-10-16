@@ -1002,15 +1002,25 @@
   function begin(nextSession){
     session=nextSession||null;
     if(uploadTimer){clearTimeout(uploadTimer);uploadTimer=null;}
+    if(librarySyncTimer){clearTimeout(librarySyncTimer);librarySyncTimer=null;}
+    for(const timer of libraryPublishTimers.values()) clearTimeout(timer);
+    libraryPublishTimers.clear();
     injectDriveUi();
     if(session&&session.role==="teacher"){
       loadGoogleIdentity();
       if(restoreToken()){
         const btn=$("dtmtpDriveConnectBtn");
         if(btn) btn.textContent="Google Drive Connected";
-        schedulePublish(600);
+        setDriveStatus("Google Drive Library connected","synced");
+        librarySyncTimer=setTimeout(async()=>{
+          librarySyncTimer=null;
+          try{
+            await syncTeacherLibrary();
+            await publishAssignedSongs();
+          }catch(error){console.error("Startup Drive Library sync failed",error);}
+        },600);
       }else{
-        setDriveStatus("Connect Google Drive to sync assigned materials","pending");
+        setDriveStatus("Connect Google Drive to sync the teacher Library","pending");
       }
     }
   }
@@ -1031,7 +1041,17 @@
   });
   window.addEventListener("dtmtp:library-changed",event=>{
     const id=event.detail&&event.detail.songId;
-    if(session&&session.role==="teacher"&&id&&isAssigned(id)) publishSong(id).catch(error=>console.error(error));
+    const type=event.detail&&event.detail.type;
+    if(!(session&&session.role==="teacher"&&id)) return;
+    if(type==="delete"){
+      if(isAssigned(id)){
+        emit("error","Remove this song's assignments before deleting its cloud Library copy.");
+        return;
+      }
+      deleteLibrarySong(id).catch(error=>console.error(error));
+      return;
+    }
+    scheduleLibraryPublish(id,450);
   });
   window.addEventListener("dtmtp:cloud-data-applied",()=>{
     if(session&&session.role==="teacher") schedulePublish(500);
@@ -1053,8 +1073,16 @@
     ensureSong,
     publishSong,
     publishAssignedSongs,
+    getLibraryIndex,
+    syncTeacherLibrary,
+    publishLibrarySong,
+    ensureLibraryAsset,
+    ensureTeacherLibrarySong,
+    renameLibrarySong,
+    deleteLibrarySong,
     connectGoogleDrive,
     getSession:()=>session,
-    isDriveConnected:()=>!!(driveToken||restoreToken())
+    isDriveConnected:()=>!!(driveToken||restoreToken()),
+    getDriveFolders:()=>({driveRootId,libraryFolderId,materialsFolderId})
   };
 })();
