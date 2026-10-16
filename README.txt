@@ -77,6 +77,7 @@ STORAGE AND CLOUD ARCHITECTURE
 - Student devices download/cache only materials referenced by their assignments.
 - Teacher/student accounts and assignment/progress sync: Firebase Authentication + Firestore.
 - Firebase Storage is not used.
+- While the same browser session remains open, expired Google Drive access tokens are renewed silently when Google permits it; otherwise the teacher is asked to reconnect.
 
 SUPPORTED INTERACTIVE SCORE FILES
 - .gp
