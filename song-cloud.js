@@ -204,6 +204,8 @@
       await publishAssignedSongs();
       return true;
     }catch(error){
+      const btn=$("dtmtpDriveConnectBtn");
+      if(btn) btn.textContent="Reconnect Google Drive";
       setDriveStatus("Reconnect Google Drive to continue cloud Library access","pending");
       return false;
     }
