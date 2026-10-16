@@ -465,6 +465,350 @@
     }
   }
 
+  async function cloudSongRecords(){
+    const F=fb();
+    const s=session||currentSession();
+    if(!F||!s||!s.academyId) return [];
+    const snap=await F.getDocs(F.collection(F.db,"academies",s.academyId,"songs"));
+    const rows=[];
+    snap.forEach(docSnap=>{
+      const value=docSnap.data()||{};
+      rows.push({...value,id:value.id||docSnap.id});
+    });
+    return rows;
+  }
+
+  function masterAssets(meta){
+    if(!meta) return {};
+    const master=meta.libraryAssets&&typeof meta.libraryAssets==="object"?meta.libraryAssets:{};
+    if(Object.values(master).some(Boolean)) return master;
+    const legacy=meta.assets&&typeof meta.assets==="object"?meta.assets:{};
+    return legacy;
+  }
+
+  function isMasterAsset(meta,kind){
+    return !!(meta&&meta.libraryAssets&&meta.libraryAssets[kind]);
+  }
+
+  function mergedLibraryAsset(remote,local){
+    if(!remote) return local||null;
+    const cached=sameAsset(local,remote);
+    return {
+      ...remote,
+      blob:cached&&local?local.blob:null,
+      cached
+    };
+  }
+
+  function mergeLibraryRecord(meta,local){
+    const assets=masterAssets(meta);
+    const hasCloud=!!meta;
+    const song={
+      id:(meta&&meta.id)||(local&&local.id)||"",
+      title:(meta&&meta.title)||(local&&local.title)||"Untitled Song",
+      createdAt:Number((meta&&meta.createdAt)||(local&&local.createdAt)||Date.now()),
+      updatedAt:Number((meta&&meta.libraryUpdatedAt)||(meta&&meta.localUpdatedAt)||(local&&local.updatedAt)||Date.now()),
+      syncPoints:Array.isArray(meta&&meta.syncPoints)?meta.syncPoints:(Array.isArray(local&&local.syncPoints)?local.syncPoints:[]),
+      interactive:mergedLibraryAsset(assets.interactive||null,local&&local.interactive),
+      pdf:mergedLibraryAsset(assets.pdf||null,local&&local.pdf),
+      audio:mergedLibraryAsset(assets.audio||null,local&&local.audio),
+      _cloud:hasCloud,
+      _masterReady:!!(meta&&meta.libraryFolderId&&meta.libraryAssets),
+      _localOnly:!hasCloud,
+      _libraryFolderId:(meta&&meta.libraryFolderId)||""
+    };
+    song._cachedKinds=["interactive","pdf","audio"].filter(kind=>song[kind]&&song[kind].blob);
+    return song;
+  }
+
+  async function getLibraryIndex(){
+    const locals=await localSongs().catch(()=>[]);
+    const localMap=new Map(locals.map(song=>[song.id,song]));
+    const s=session||currentSession();
+    if(!s||s.role!=="teacher"||!s.academyId){
+      return locals.map(song=>mergeLibraryRecord(null,song));
+    }
+
+    let cloud=[];
+    try{
+      cloud=await cloudSongRecords();
+    }catch(error){
+      console.warn("Cloud Library index unavailable",error);
+      return locals.map(song=>mergeLibraryRecord(null,song));
+    }
+
+    const rows=[];
+    for(const meta of cloud){
+      const local=localMap.get(meta.id)||null;
+      rows.push(mergeLibraryRecord(meta,local));
+      localMap.delete(meta.id);
+    }
+    for(const local of localMap.values()) rows.push(mergeLibraryRecord(null,local));
+    rows.sort((a,b)=>String(a.title||"").localeCompare(String(b.title||"")));
+    return rows;
+  }
+
+  async function ensureSongFolder(songId,title,existingId){
+    let folderId=existingId||"";
+    if(!(await folderExists(folderId))){
+      folderId=await createFolder(safeName(title||"Untitled Song"),libraryFolderId);
+    }else{
+      await renameDriveItem(folderId,title||"Untitled Song");
+    }
+    return folderId;
+  }
+
+  async function downloadPrivateDriveAsset(meta){
+    if(!meta||!meta.fileId) return null;
+    const headers={};
+    if(meta.resourceKey) headers["X-Goog-Drive-Resource-Keys"]=meta.fileId+"/"+meta.resourceKey;
+    const response=await driveFetch(
+      "https://www.googleapis.com/drive/v3/files/"+encodeURIComponent(meta.fileId)+"?alt=media",
+      {headers}
+    );
+    const blob=await response.blob();
+    return {
+      name:meta.name||"file",
+      mime:meta.mime||blob.type||"",
+      size:Number(meta.size||blob.size||0),
+      updatedAt:Number(meta.updatedAt||Date.now()),
+      blob
+    };
+  }
+
+  async function publishLibrarySong(songId){
+    if(!songId) return null;
+    if(libraryPublishing.has(songId)) return libraryPublishing.get(songId);
+
+    const task=(async()=>{
+      const F=fb();
+      const s=session||currentSession();
+      if(!F||!s||s.role!=="teacher"||!s.academyId) return null;
+      if(!driveToken&&!restoreToken()){
+        emit("pending","Connect Google Drive to sync the teacher Library");
+        return null;
+      }
+
+      const song=await localSong(songId);
+      if(!song) return null;
+      await ensureDriveFolders();
+
+      const metaRef=F.doc(F.db,"academies",s.academyId,"songs",songId);
+      const oldSnap=await F.getDoc(metaRef);
+      const old=oldSnap.exists()?oldSnap.data():{};
+      const oldMaster=old.libraryAssets||{};
+      const folderId=await ensureSongFolder(songId,song.title,old.libraryFolderId||"");
+      const libraryAssets={};
+
+      emit("syncing","Syncing "+(song.title||"song")+" to the Drive Library…");
+
+      for(const kind of ["interactive","pdf","audio"]){
+        if(song[kind]&&song[kind].blob){
+          libraryAssets[kind]=await uploadAsset(song[kind],oldMaster[kind]||null,folderId,false);
+        }else{
+          libraryAssets[kind]=oldMaster[kind]||null;
+        }
+      }
+
+      const masterUpdatedAt=Number(song.updatedAt||Date.now());
+      await F.setDoc(metaRef,{
+        id:song.id,
+        title:song.title||"Untitled Song",
+        provider:"google-drive",
+        libraryProvider:"google-drive",
+        libraryFolderId:folderId,
+        libraryAssets,
+        libraryUpdatedAt:masterUpdatedAt,
+        createdAt:Number(song.createdAt||old.createdAt||Date.now()),
+        syncPoints:Array.isArray(song.syncPoints)?song.syncPoints:[],
+        updatedAt:F.serverTimestamp()
+      },{merge:true});
+
+      window.dispatchEvent(new CustomEvent("dtmtp:library-index-changed",{detail:{songId,type:"sync"}}));
+      emit("synced",(song.title||"Song")+" saved to the Drive Library");
+      return {songId,folderId,assets:libraryAssets};
+    })().catch(error=>{
+      console.error("Drive Library upload failed",error);
+      const friendly=friendlyDriveError(error);
+      emit("error",friendly.message);
+      throw friendly;
+    }).finally(()=>libraryPublishing.delete(songId));
+
+    libraryPublishing.set(songId,task);
+    return task;
+  }
+
+  function scheduleLibraryPublish(songId,delay){
+    if(!songId) return;
+    const old=libraryPublishTimers.get(songId);
+    if(old) clearTimeout(old);
+    const timer=setTimeout(()=>{
+      libraryPublishTimers.delete(songId);
+      publishLibrarySong(songId)
+        .then(()=>{if(isAssigned(songId)) return publishSong(songId);})
+        .catch(error=>console.error(error));
+    },delay==null?500:delay);
+    libraryPublishTimers.set(songId,timer);
+  }
+
+  async function syncTeacherLibrary(){
+    const s=session||currentSession();
+    if(!s||s.role!=="teacher"||!s.academyId) return [];
+    if(!driveToken&&!restoreToken()) return await getLibraryIndex();
+
+    await ensureDriveFolders();
+    const cloud=await cloudSongRecords().catch(()=>[]);
+    const cloudMap=new Map(cloud.map(row=>[row.id,row]));
+    const locals=await localSongs().catch(()=>[]);
+
+    for(const song of locals){
+      const remote=cloudMap.get(song.id)||null;
+      const remoteUpdated=Number(remote&&remote.libraryUpdatedAt||0);
+      const hasMaster=!!(remote&&remote.libraryFolderId&&remote.libraryAssets);
+      if(!hasMaster||Number(song.updatedAt||0)>remoteUpdated){
+        await publishLibrarySong(song.id);
+      }
+    }
+
+    window.dispatchEvent(new CustomEvent("dtmtp:library-index-changed",{detail:{type:"refresh"}}));
+    return await getLibraryIndex();
+  }
+
+  async function ensureLibraryAsset(songId,kind){
+    if(!["interactive","pdf","audio"].includes(kind)) throw new Error("Unsupported Library asset.");
+    if(!songId) throw new Error("Choose a song first.");
+    const key=songId+":"+kind;
+    if(libraryDownloading.has(key)) return libraryDownloading.get(key);
+
+    const task=(async()=>{
+      const F=fb();
+      const s=session||currentSession();
+      if(!F||!s||s.role!=="teacher"||!s.academyId) throw new Error("Teacher cloud account is not ready.");
+
+      let local=await localSong(songId);
+      const metaRef=F.doc(F.db,"academies",s.academyId,"songs",songId);
+      const snap=await F.getDoc(metaRef);
+      if(!snap.exists()){
+        if(local&&local[kind]&&local[kind].blob) return local[kind];
+        throw new Error("This song has not been synced to the Drive Library yet.");
+      }
+
+      const meta=snap.data()||{};
+      const assets=masterAssets(meta);
+      const remote=assets[kind]||null;
+      if(!remote){
+        if(local&&local[kind]&&local[kind].blob) return local[kind];
+        throw new Error("This song has no "+(kind==="interactive"?"interactive score":kind==="pdf"?"PDF":"backing track")+".");
+      }
+      if(local&&sameAsset(local[kind],remote)) return local[kind];
+
+      if(isMasterAsset(meta,kind) && !driveToken && !restoreToken()){
+        throw new Error("Reconnect Google Drive to open this Library file.");
+      }
+
+      emit("syncing","Downloading "+(meta.title||"song")+" "+(kind==="interactive"?"score":kind==="pdf"?"PDF":"backing track")+"…");
+      const asset=isMasterAsset(meta,kind)
+        ? await downloadPrivateDriveAsset(remote)
+        : await downloadDriveAsset(remote);
+
+      local=local||{
+        id:songId,
+        title:meta.title||"Untitled Song",
+        createdAt:Number(meta.createdAt||Date.now()),
+        updatedAt:Number(meta.libraryUpdatedAt||meta.localUpdatedAt||Date.now()),
+        syncPoints:Array.isArray(meta.syncPoints)?meta.syncPoints:[],
+        interactive:null,pdf:null,audio:null
+      };
+      local.title=meta.title||local.title||"Untitled Song";
+      local.createdAt=Number(meta.createdAt||local.createdAt||Date.now());
+      local.updatedAt=Number(meta.libraryUpdatedAt||meta.localUpdatedAt||local.updatedAt||Date.now());
+      local.syncPoints=Array.isArray(meta.syncPoints)?meta.syncPoints:(local.syncPoints||[]);
+      local[kind]=asset;
+      await saveLocalSong(local);
+      emit("synced",(meta.title||"Song")+" "+(kind==="audio"?"backing track":kind)+" cached on this device");
+      return asset;
+    })().finally(()=>libraryDownloading.delete(key));
+
+    libraryDownloading.set(key,task);
+    return task;
+  }
+
+  async function ensureTeacherLibrarySong(songId){
+    const F=fb();
+    const s=session||currentSession();
+    if(!F||!s||s.role!=="teacher"||!s.academyId) return await localSong(songId);
+    const metaRef=F.doc(F.db,"academies",s.academyId,"songs",songId);
+    const snap=await F.getDoc(metaRef);
+    if(!snap.exists()) return await localSong(songId);
+    const meta=snap.data()||{};
+    const assets=masterAssets(meta);
+    for(const kind of ["interactive","pdf","audio"]){
+      if(assets[kind]) await ensureLibraryAsset(songId,kind);
+    }
+    return await localSong(songId);
+  }
+
+  async function renameLibrarySong(songId,title){
+    const next=String(title||"").trim();
+    if(!next) throw new Error("Enter a song title.");
+    const F=fb();
+    const s=session||currentSession();
+    if(!F||!s||s.role!=="teacher"||!s.academyId) throw new Error("Teacher cloud account is not ready.");
+
+    const metaRef=F.doc(F.db,"academies",s.academyId,"songs",songId);
+    const snap=await F.getDoc(metaRef);
+    if(!snap.exists()){
+      const local=await localSong(songId);
+      if(!local) throw new Error("Song not found.");
+      local.title=next;
+      local.updatedAt=Date.now();
+      await saveLocalSong(local);
+      scheduleLibraryPublish(songId,0);
+      return local;
+    }
+
+    const meta=snap.data()||{};
+    if(meta.libraryFolderId){
+      if(!driveToken&&!restoreToken()) throw new Error("Reconnect Google Drive to rename this Library song.");
+      await renameDriveItem(meta.libraryFolderId,next);
+    }
+
+    const now=Date.now();
+    await F.setDoc(metaRef,{title:next,libraryUpdatedAt:now,updatedAt:F.serverTimestamp()},{merge:true});
+    const local=await localSong(songId);
+    if(local){
+      local.title=next;
+      local.updatedAt=now;
+      await saveLocalSong(local);
+    }
+    window.dispatchEvent(new CustomEvent("dtmtp:library-index-changed",{detail:{songId,type:"rename"}}));
+    return mergeLibraryRecord({...meta,id:songId,title:next,libraryUpdatedAt:now},local);
+  }
+
+  async function deleteLibrarySong(songId){
+    const F=fb();
+    const s=session||currentSession();
+    if(!F||!s||s.role!=="teacher"||!s.academyId) throw new Error("Teacher cloud account is not ready.");
+    if(isAssigned(songId)) throw new Error("Remove this song's assignments before deleting it from the Library.");
+
+    const metaRef=F.doc(F.db,"academies",s.academyId,"songs",songId);
+    const snap=await F.getDoc(metaRef);
+    if(snap.exists()){
+      const meta=snap.data()||{};
+      const hasDriveFiles=!!meta.libraryFolderId||Object.values(meta.assets||{}).some(Boolean);
+      if(hasDriveFiles&&!driveToken&&!restoreToken()) throw new Error("Reconnect Google Drive before deleting this cloud song.");
+      if(meta.libraryFolderId) await trashDriveItem(meta.libraryFolderId);
+      for(const asset of Object.values(meta.assets||{})){
+        if(asset&&asset.fileId) await trashDriveItem(asset.fileId);
+      }
+      await F.deleteDoc(metaRef);
+    }
+
+    window.dispatchEvent(new CustomEvent("dtmtp:library-index-changed",{detail:{songId,type:"delete"}}));
+    emit("synced","Song removed from the Drive Library");
+    return true;
+  }
+
   function friendlyDriveError(error){
     const message=String(error&&error.message||"");
     if(message.includes("403")){
@@ -489,11 +833,20 @@
         return null;
       }
 
-      const song=await localSong(songId);
+      let song=await localSong(songId);
+      if(song){
+        try{await publishLibrarySong(songId);}catch(error){console.warn("Master Library sync before assignment failed",error);}
+      }
+      try{
+        const hydrated=await ensureTeacherLibrarySong(songId);
+        if(hydrated) song=hydrated;
+      }catch(error){
+        console.warn("Could not hydrate all master Library assets before assignment publish",error);
+      }
       if(!song) return null;
 
       await ensureDriveFolders();
-      emit("syncing","Uploading " + (song.title||"song") + " to Google Drive…");
+      emit("syncing","Publishing " + (song.title||"song") + " for student access…");
 
       try{
         const metaRef=F.doc(F.db,"academies",s.academyId,"songs",songId);
@@ -505,7 +858,7 @@
         for(const kind of ["interactive","pdf","audio"]){
           assets[kind]=song[kind]&&song[kind].blob
             ? await uploadAsset(song[kind],oldAssets[kind]||null,materialsFolderId,true)
-            : null;
+            : (oldAssets[kind]||null);
         }
 
         await F.setDoc(metaRef,{
