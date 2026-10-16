@@ -1371,3 +1371,170 @@ body.p7-ready .auth-account-btn{
   .auth-view input,.auth-panel-body input,.auth-panel-body select{font-size:16px}
   .auth-account-btn,.auth-primary,.auth-danger,.auth-row-actions button{min-height:40px}
 }
+
+
+/* ==========================================
+   READABILITY PASS · COMFORTABLE TYPE SCALE
+   Keep controls compact, but stop using 7–10px text as normal UI copy.
+========================================== */
+body.p7-ready{font-size:14px}
+body.p7-ready .topbar .brand{font-size:16px}
+body.p7-ready .topbar .sub{font-size:12px}
+body.p7-ready .status-pill{font-size:12px}
+body.p7-ready .auth-account-btn{font-size:12px!important}
+
+.p7-side-brand strong{font-size:15px}
+.p7-side-brand span{font-size:12px}
+.p7-nav-button{font-size:13px}
+.p7-side-user{font-size:13px}
+.p7-side-role{font-size:11px}
+
+.p7-eyebrow{font-size:11px}
+.p7-copy{font-size:14px}
+.p7-primary,.p7-secondary{font-size:13px}
+.p7-metric-label{font-size:12px}
+.p7-metric-foot{font-size:11px}
+.p7-card-title{font-size:15px}
+.p7-card-sub{font-size:13px}
+.p7-list-title{font-size:14px}
+.p7-list-meta{font-size:12px;line-height:1.4}
+.p7-badge,.p7-attention-pill,.p7-count-chip{font-size:11px}
+.p7-empty{font-size:13px;line-height:1.5}
+.p7-quick strong{font-size:14px}
+.p7-quick span{font-size:12px}
+.p7-progress-box .k{font-size:11px}
+
+.p7-student-welcome p{font-size:13px}
+.p7-streak-pill span{font-size:11px}
+.p7-section-label{font-size:11px}
+.p7-today-kicker{font-size:11px}
+.p7-due{font-size:11px}
+.p7-assignment-specs span{font-size:11px}
+.p7-today-meta{font-size:12px}
+.p7-today-note{font-size:13px}
+.p7-assignment-status{font-size:10px}
+.p7-goal-row>div:first-child strong{font-size:13px}
+.p7-goal-row>div:first-child span{font-size:11px}
+.p7-history-row strong,.p7-progress-session strong{font-size:13px}
+.p7-history-row span,.p7-progress-session span{font-size:11px}
+.p7-progress-date{font-size:11px}
+.p7-week-day span{font-size:10px}
+.p7-streak-large span{font-size:11px}
+.p7-student-assignment-row strong{font-size:13px}
+.p7-student-assignment-row span{font-size:11px}
+
+.p7-guide-song strong{font-size:14px}
+.p7-guide-song span{font-size:11px}
+.p7-guide-stat span{font-size:10px}
+.p7-guide-message{font-size:12px}
+.p7-completion-goal{font-size:12px}
+.p7-completion-goal strong{font-size:13px}
+
+.p74-profile-heading .p7-eyebrow{font-size:11px}
+.p74-profile-heading>div>span{font-size:12px}
+.p74-assignment-card .p7-list-title{font-size:14px}
+.p74-assignment-card .p7-list-meta{font-size:12px}
+.p74-assignment-specs span{font-size:11px}
+.p74-teacher-note-inline{font-size:12px;line-height:1.5}
+.p74-session-row strong,.p74-history-row strong{font-size:13px}
+.p74-session-row span,.p74-history-row span{font-size:11px}
+.p74-notes textarea{font-size:14px}
+.p74-note-actions{font-size:11px}
+
+.p75-step span{font-size:11px}
+.p75-step b{font-size:11px}
+.p75-step-heading p{font-size:13px}
+.p75-student-card strong{font-size:13px}
+.p75-student-card span{font-size:11px}
+.p75-search{font-size:13px}
+.p75-song-card strong{font-size:13px}
+.p75-song-card span{font-size:11px}
+.p75-form-section h3{font-size:13px}
+.p75-form label,.p75-wide-label{font-size:11px}
+.p75-form input,.p75-form select,.p75-form textarea{font-size:14px}
+.p75-review-title span,.p75-review-grid span,.p75-review-note span{font-size:11px}
+.p75-review-title strong{font-size:14px}
+.p75-review-grid strong{font-size:13px}
+.p75-review-note p{font-size:13px}
+.p75-review-countin{font-size:12px}
+.p75-error{font-size:12px}
+.p75-success p{font-size:13px}
+.p75-assignment-summary>div span{font-size:11px}
+.p75-manage-btn{font-size:11px}
+
+.p76-message{font-size:12px}
+.p76-health strong{font-size:13px}
+.p76-health span{font-size:11px}
+.p76-search-wrap input{font-size:13px}
+.p76-filters button{font-size:11px}
+.p76-toolbar-actions .p7-secondary{font-size:11px}
+.p76-dropzone{font-size:12px;line-height:1.45}
+.p76-catalog-head strong{font-size:13px}
+.p76-catalog-head span{font-size:11px}
+.p76-song-main>strong{font-size:14px}
+.p76-asset-badge{font-size:10px}
+.p76-cloud{font-size:11px}
+.p76-song-assigned{font-size:10px}
+.p76-detail-empty strong{font-size:14px}
+.p76-detail-empty span{font-size:12px}
+.p76-detail-meta{font-size:11px}
+.p76-detail-actions button{font-size:11px}
+.p76-cloud-card span{font-size:10px}
+.p76-cloud-card strong{font-size:12px}
+.p76-cloud-card p{font-size:12px}
+.p76-section-head strong{font-size:13px}
+.p76-section-head span{font-size:11px}
+.p76-asset-main strong{font-size:13px}
+.p76-asset-main span{font-size:11px;line-height:1.4}
+.p76-asset-row button{font-size:11px}
+.p76-assigned-row strong{font-size:13px}
+.p76-assigned-row span{font-size:11px}
+.p76-empty-inline{font-size:11px}
+.p76-danger-zone strong{font-size:12px}
+.p76-danger-zone span{font-size:11px}
+.p76-danger-button{font-size:11px}
+.p76-add-head p{font-size:12px}
+.p76-add-dialog>label{font-size:11px}
+.p76-add-dialog>label input{font-size:14px}
+.p76-add-files strong{font-size:12px}
+.p76-add-files span{font-size:11px}
+.p76-add-files input{font-size:12px}
+
+.p77-page-title strong{font-size:14px}
+.p77-score-song>.p7-eyebrow{font-size:10px}
+.p77-score-song strong{font-size:15px}
+.p77-score-song>span{font-size:11px}
+.p77-small-control,.p77-source-switch button{font-size:11px}
+.p77-control span{font-size:10px}
+.p77-session{font-size:11px}
+#p77Position{font-size:11px}
+#p77ModePill{font-size:10px}
+.p77-sliders label>span{font-size:10px}
+.p77-sliders b{font-size:11px}
+.p77-guided-hint{font-size:10px}
+#p7PagePractice .p7-practice-tools summary{font-size:12px}
+
+.auth-kicker{font-size:12px!important}
+.auth-view p,.auth-panel-body p{font-size:13px!important;line-height:1.5}
+.auth-view label,.auth-panel-body label{font-size:11px!important}
+.auth-switch button,.auth-primary,.auth-danger,.auth-row-actions button{font-size:12px!important}
+.auth-cloud-status{font-size:11px!important}
+
+@media(max-width:900px){
+  .p7-stage{height:calc(100% - 70px - env(safe-area-inset-bottom,0px))}
+  .p7-mobile-nav{height:calc(70px + env(safe-area-inset-bottom,0px))}
+  .p7-mobile-nav .p7-nav-button{min-height:64px;font-size:10px}
+}
+
+@media(max-width:780px){
+  .p77-score-song strong{font-size:13px}
+  .p77-score-song>span{font-size:10px}
+  .p77-source-switch button{font-size:10px}
+  .p77-control span{font-size:9px}
+  .p77-guided-hint{font-size:10px}
+}
+
+@media(max-width:420px){
+  .p7-metric-foot{font-size:10px}
+  .p76-asset-main span{white-space:normal}
+}
