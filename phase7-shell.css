@@ -1538,3 +1538,52 @@ body.p7-ready .auth-account-btn{font-size:12px!important}
   .p7-metric-foot{font-size:10px}
   .p76-asset-main span{white-space:normal}
 }
+
+
+/* Readability for legacy engines that are still surfaced inside modern drawers/modals */
+#p7PagePractice .section-title{font-size:13px}
+#p7PagePractice .drop-zone,
+#p7PagePractice .note,
+#p7PagePractice .mini-status{font-size:13px;line-height:1.45}
+#p7PagePractice .asset-chip{font-size:11px}
+#p7PagePractice .asset-name{font-size:13px}
+#p7PagePractice .asset-kind{font-size:11px}
+#p7PagePractice .asset-actions button,
+#p7PagePractice .viewer-actions button,
+#p7PagePractice .audio-row button,
+#p7PagePractice .sync-point button{font-size:12px}
+#p7PagePractice .field label,
+#p7PagePractice .control-group label{font-size:12px}
+#p7PagePractice .value,
+#p7PagePractice .audio-title,
+#p7PagePractice .sync-time-box,
+#p7PagePractice .sync-point-title{font-size:12px}
+#p7PagePractice .audio-note,
+#p7PagePractice .sync-point-meta{font-size:11px}
+#p7PagePractice .practice-check,
+#p7PagePractice .practice-reps{font-size:13px}
+#p7PagePractice .practice-step-text{font-size:12px}
+#p7PagePractice .practice-source-pill{font-size:11px}
+
+.assignment-modal .assignment-summary-box .l,
+.assignment-modal .assignment-form label,
+.assignment-modal .assignment-badge{font-size:11px}
+.assignment-modal .assignment-head-sub,
+.assignment-modal .assignment-card-sub,
+.assignment-modal .assignment-note,
+.assignment-modal .assignment-frequency-main,
+.assignment-modal .assignment-frequency-progress,
+.assignment-modal .assignment-student-meta{font-size:12px}
+.assignment-modal .assignment-progress-box .k{font-size:11px}
+.assignment-modal .assignment-empty,
+.assignment-toast{font-size:13px}
+
+.auth-account-btn{font-size:12px!important}
+.auth-kicker{font-size:12px!important}
+.auth-view p,.auth-teacher-tools p{font-size:13px!important;line-height:1.5}
+.auth-view label,.auth-panel-body label{font-size:11px!important}
+.auth-message{font-size:13px!important}
+.auth-local-note,.auth-account-row span{font-size:11px!important}
+.auth-panel-sub,.auth-current-meta,.auth-empty{font-size:12px!important}
+.auth-row-actions button{font-size:12px!important}
+.auth-toast{font-size:13px!important}
