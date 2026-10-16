@@ -493,7 +493,7 @@
         '<span>'+(assignedNoBacking?"⚠ "+assignedNoBacking+" assigned without backing":"✓ Assigned backing tracks look good")+'</span></div>'+
       '<div class="p76-toolbar"><div class="p76-search-wrap"><input id="p76Search" type="search" placeholder="Search songs…" value="'+escapeHtml(libraryState.search)+'"></div>'+
         '<div class="p76-filters">'+["all","interactive","pdf","backing","assigned","incomplete"].map(key=>'<button data-p76-filter="'+key+'" class="'+(libraryState.filter===key?"active":"")+'" type="button">'+({all:"All",interactive:"Interactive",pdf:"PDF",backing:"Backing",assigned:"Assigned",incomplete:"Incomplete"}[key])+'</button>').join("")+'</div>'+
-        '<div class="p76-toolbar-actions"><button id="p76BulkAdd" class="p7-secondary" type="button">Add Files</button><button id="p76SaveZip" class="p7-secondary" type="button">Save ZIP</button><button id="p76LoadZip" class="p7-secondary" type="button">Import ZIP</button></div><input id="p76BulkFile" type="file" multiple hidden accept=".pdf,.gp,.gpx,.gp3,.gp4,.gp5,.gp6,.gp7,.gp8,.musicxml,.mxl,.xml,.mp3,.wav,application/pdf,application/xml,text/xml,audio/mpeg,audio/wav,audio/x-wav"></div>'+
+        '<div class="p76-toolbar-actions"><button id="p76SyncDrive" class="p7-secondary" type="button">Sync Drive</button><button id="p76BulkAdd" class="p7-secondary" type="button">Add Files</button><button id="p76SaveZip" class="p7-secondary" type="button">Save ZIP</button><button id="p76LoadZip" class="p7-secondary" type="button">Import ZIP</button></div><input id="p76BulkFile" type="file" multiple hidden accept=".pdf,.gp,.gpx,.gp3,.gp4,.gp5,.gp6,.gp7,.gp8,.musicxml,.mxl,.xml,.mp3,.wav,application/pdf,application/xml,text/xml,audio/mpeg,audio/wav,audio/x-wav"></div>'+
       '<div id="p76Dropzone" class="p76-dropzone">Drop Guitar Pro / MusicXML, PDF, MP3 or WAV files here — matching filenames are grouped, then synced to your Drive Library.</div>'+
       '<div class="p76-library-layout"><section id="p76Catalog" class="p76-catalog">'+
         '<div class="p76-catalog-head"><strong>'+visible.length+' song'+(visible.length===1?"":"s")+'</strong><span>'+escapeHtml(libraryState.filter==="all"?"All materials":libraryState.filter)+'</span></div>'+
@@ -523,6 +523,19 @@
     });
 
     const add=$("p76AddSong"); if(add) add.onclick=()=>openLibraryAddSong();
+    const syncDrive=$("p76SyncDrive");
+    if(syncDrive) syncDrive.onclick=async()=>{
+      const cloudApi=window.DTMusicTrainerSongCloud;
+      if(!cloudApi||typeof cloudApi.syncTeacherLibrary!=="function") return;
+      syncDrive.disabled=true;
+      try{
+        setLibraryMessage(libraryDriveConnected()?"Syncing Drive Library…":"Refreshing cloud catalogue…");
+        await cloudApi.syncTeacherLibrary();
+        libraryState.message=libraryDriveConnected()?"Drive Library synced.":"Cloud catalogue refreshed. Reconnect Drive to upload or open uncached files.";
+        await renderLibraryPage();
+      }catch(error){setLibraryMessage(error.message||"Could not sync Drive Library.");}
+      finally{syncDrive.disabled=false;}
+    };
     const bulk=$("p76BulkAdd"), bulkInput=$("p76BulkFile");
     if(bulk&&bulkInput) bulk.onclick=()=>bulkInput.click();
     if(bulkInput) bulkInput.onchange=()=>handleLibraryBulkFiles(bulkInput.files);
