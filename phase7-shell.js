@@ -443,8 +443,14 @@
       }).join("");
       const assetRow=(kind,label,asset,icon)=>{
         const accept=kind==="interactive"?".gp,.gpx,.gp3,.gp4,.gp5,.gp6,.gp7,.gp8,.musicxml,.mxl,.xml":kind==="pdf"?".pdf":"audio/mpeg,audio/wav,.mp3,.wav";
-        return '<div class="p76-asset-row"><div class="p76-asset-icon">'+icon+'</div><div class="p76-asset-main"><strong>'+label+'</strong><span>'+(asset?escapeHtml(asset.name)+" · "+formatLibraryBytes(asset.size):"Not attached")+'</span></div>'+
-          (asset?(kind==="interactive"?'<button class="p7-secondary" data-p76-open-interactive="'+escapeHtml(selected.id)+'" type="button">Open</button>':kind==="pdf"?'<button class="p7-secondary" data-p76-open-pdf="'+escapeHtml(selected.id)+'" type="button">Open</button>':''):'')+
+        const location=asset?(asset.blob?"Cached on this device":asset.provider==="google-drive"?"Cloud · downloads when opened":"Local"):"Not attached";
+        const openButton=!asset?"":kind==="interactive"
+          ? '<button class="p7-secondary" data-p76-open-interactive="'+escapeHtml(selected.id)+'" type="button">Open</button>'
+          : kind==="pdf"
+            ? '<button class="p7-secondary" data-p76-open-pdf="'+escapeHtml(selected.id)+'" type="button">Open</button>'
+            : '<button class="p7-secondary" data-p76-open-audio="'+escapeHtml(selected.id)+'" type="button">'+(asset.blob?"Play":"Cache & Play")+'</button>';
+        return '<div class="p76-asset-row"><div class="p76-asset-icon">'+icon+'</div><div class="p76-asset-main"><strong>'+label+'</strong><span>'+(asset?escapeHtml(asset.name)+" · "+formatLibraryBytes(asset.size)+" · "+escapeHtml(location):"Not attached")+'</span></div>'+
+          openButton+
           '<button class="p7-secondary" data-p76-replace="'+kind+'" data-p76-accept="'+escapeHtml(accept)+'" type="button">'+(asset?"Replace":"Attach")+'</button></div>';
       };
 
@@ -452,16 +458,20 @@
         '<div class="p76-detail-top"><button id="p76MobileBack" class="p74-back" type="button">← Library</button><div><div class="p7-eyebrow">Song details</div><h2>'+escapeHtml(selected.title||"Untitled Song")+'</h2>'+
           '<div class="p76-detail-meta">Updated '+escapeHtml(updatedText)+' · '+related.length+' assignment'+(related.length===1?"":"s")+'</div></div>'+
           '<div class="p76-detail-actions"><button id="p76AssignSong" class="p7-primary" type="button" '+(selected.interactive?"":"disabled")+'>Assign</button><button id="p76RenameSong" class="p7-secondary" type="button">Rename</button></div></div>'+
-        '<div class="p76-cloud-card"><div><span>Cloud</span><strong>'+escapeHtml(cloud.text)+'</strong></div><p>'+(related.length?(libraryDriveConnected()?"Assigned materials sync automatically through the existing Google Drive workflow.":"Reconnect Google Drive from Cloud Account before assigned materials can upload."):"This song stays local until it is assigned to a student.")+'</p></div>'+
+        '<div class="p76-cloud-card"><div><span>Library source</span><strong>'+escapeHtml(cloud.text)+'</strong></div><p>'+
+          (selected._cloud
+            ? (libraryDriveConnected()?"The master files are in Google Drive. Opening a score, PDF or backing track caches only that file on this device.":"The cloud catalogue is visible, but reconnect Google Drive before opening uncached files.")
+            : (libraryDriveConnected()?"This local song is waiting to finish syncing into the Drive Library.":"This song currently exists only on this device. Connect Google Drive to make it part of the master Library."))+
+        '</p></div>'+
         '<div class="p76-detail-section"><div class="p76-section-head"><strong>Teaching materials</strong><span>'+[selected.interactive,selected.pdf,selected.audio].filter(Boolean).length+' / 3 attached</span></div>'+
           assetRow("interactive","Interactive score",selected.interactive,"🎼")+
           assetRow("pdf","PDF score",selected.pdf,"📄")+
           assetRow("audio","Backing track",selected.audio,"🎧")+
-          (selected.audio?'<div class="p76-audio-preview"><audio id="p76AudioPreview" controls preload="metadata"></audio></div>':'')+
+          (selected.audio&&selected.audio.blob?'<div class="p76-audio-preview"><audio id="p76AudioPreview" controls preload="metadata"></audio></div>':'')+
         '</div>'+
         '<div class="p76-detail-section"><div class="p76-section-head"><strong>Assigned students</strong><span>'+assignedStudents.size+'</span></div>'+
           (assignedRows||'<div class="p76-empty-inline">This song is not currently used by any assignment.</div>')+'</div>'+
-        '<div class="p76-danger-zone"><div><strong>Delete song</strong><span>'+(related.length?"Used by "+related.length+" assignment"+(related.length===1?"":"s")+". Remove or change those assignments before deleting.":"Removes this song and its attached local files from this device.")+'</span></div>'+
+        '<div class="p76-danger-zone"><div><strong>Delete song</strong><span>'+(related.length?"Used by "+related.length+" assignment"+(related.length===1?"":"s")+". Remove or change those assignments before deleting.":"Removes this song from the Drive Library and clears its local cache on this device.")+'</span></div>'+
           '<button id="p76DeleteSong" class="p76-danger-button" type="button" '+(related.length?"disabled":"")+'>Delete</button></div>'+
         '<input id="p76ReplaceFile" type="file" hidden /></div>';
     }
@@ -528,13 +538,39 @@
     }
 
     root.querySelectorAll("[data-p76-open-interactive]").forEach(b=>b.onclick=()=>openLibraryInteractive(b.dataset.p76OpenInteractive));
-    root.querySelectorAll("[data-p76-open-pdf]").forEach(b=>b.onclick=()=>{
-      const song=librarySongs.find(s=>s.id===b.dataset.p76OpenPdf);
-      if(!song||!song.pdf||!song.pdf.blob)return;
-      const url=URL.createObjectURL(song.pdf.blob);
-      const win=window.open(url,"_blank");
-      if(!win){URL.revokeObjectURL(url);setLibraryMessage("Pop-up blocked. Allow pop-ups to preview PDFs.");return;}
-      setTimeout(()=>URL.revokeObjectURL(url),60000);
+    root.querySelectorAll("[data-p76-open-pdf]").forEach(b=>b.onclick=async()=>{
+      const songId=b.dataset.p76OpenPdf;
+      const cloudApi=window.DTMusicTrainerSongCloud;
+      const preview=window.open("about:blank","_blank");
+      if(!preview){setLibraryMessage("Pop-up blocked. Allow pop-ups to preview PDFs.");return;}
+      try{
+        setLibraryMessage("Preparing PDF…");
+        if(cloudApi&&typeof cloudApi.ensureLibraryAsset==="function") await cloudApi.ensureLibraryAsset(songId,"pdf");
+        const local=await api.getSong(songId);
+        if(!local||!local.pdf||!local.pdf.blob) throw new Error("PDF could not be cached.");
+        const url=URL.createObjectURL(local.pdf.blob);
+        preview.location.href=url;
+        libraryState.message="";
+        setTimeout(()=>URL.revokeObjectURL(url),60000);
+        await renderLibraryPage();
+      }catch(error){
+        try{preview.close();}catch(closeError){}
+        setLibraryMessage(error.message||"Could not open PDF.");
+      }
+    });
+    root.querySelectorAll("[data-p76-open-audio]").forEach(b=>b.onclick=async()=>{
+      const songId=b.dataset.p76OpenAudio;
+      const cloudApi=window.DTMusicTrainerSongCloud;
+      try{
+        setLibraryMessage("Preparing backing track…");
+        if(cloudApi&&typeof cloudApi.ensureLibraryAsset==="function") await cloudApi.ensureLibraryAsset(songId,"audio");
+        libraryState.message="Backing track cached on this device.";
+        await renderLibraryPage();
+        const player=$("p76AudioPreview");
+        if(player){try{await player.play();}catch(error){}}
+      }catch(error){
+        setLibraryMessage(error.message||"Could not load backing track.");
+      }
     });
     root.querySelectorAll("[data-p76-student]").forEach(b=>b.onclick=()=>{if(b.dataset.p76Student)openTeacherStudent(b.dataset.p76Student);});
 
@@ -542,7 +578,13 @@
     const rename=$("p76RenameSong"); if(rename&&selected) rename.onclick=async()=>{
       const next=prompt("Rename song:",selected.title||"");
       if(!next||!next.trim()) return;
-      try{await api.renameSong(selected.id,next.trim());libraryState.message="Song renamed.";await renderLibraryPage();}catch(error){setLibraryMessage(error.message||"Could not rename song.");}
+      try{
+        const cloudApi=window.DTMusicTrainerSongCloud;
+        if(selected._cloud&&cloudApi&&typeof cloudApi.renameLibrarySong==="function") await cloudApi.renameLibrarySong(selected.id,next.trim());
+        else await api.renameSong(selected.id,next.trim());
+        libraryState.message="Song renamed in the Library.";
+        await renderLibraryPage();
+      }catch(error){setLibraryMessage(error.message||"Could not rename song.");}
     };
 
     const replaceInput=$("p76ReplaceFile");
@@ -556,14 +598,26 @@
     if(replaceInput&&selected) replaceInput.onchange=async()=>{
       const file=replaceInput.files&&replaceInput.files[0], kind=replaceInput.dataset.kind;
       if(!file||!kind)return;
-      try{await api.replaceAsset(selected.id,kind,file);libraryState.message=(kind==="audio"?"Backing track":kind==="pdf"?"PDF":"Interactive score")+" updated.";await renderLibraryPage();}
-      catch(error){setLibraryMessage(error.message||"Could not replace file.");}
+      try{
+        const cloudApi=window.DTMusicTrainerSongCloud;
+        if(cloudApi&&typeof cloudApi.ensureLocalLibraryRecord==="function") await cloudApi.ensureLocalLibraryRecord(selected.id);
+        await api.replaceAsset(selected.id,kind,file);
+        libraryState.message=(kind==="audio"?"Backing track":kind==="pdf"?"PDF":"Interactive score")+" updated · syncing to Drive.";
+        await renderLibraryPage();
+      }catch(error){setLibraryMessage(error.message||"Could not replace file.");}
     };
 
     const del=$("p76DeleteSong"); if(del&&selected&&!related.length) del.onclick=async()=>{
-      if(!confirm('Delete "'+(selected.title||"this song")+'" and its attached local files?')) return;
-      try{await api.deleteSong(selected.id);libraryState.selectedId="";libraryState.detailOpen=false;libraryState.message="Song deleted.";await renderLibraryPage();}
-      catch(error){setLibraryMessage(error.message||"Could not delete song.");}
+      if(!confirm('Delete "'+(selected.title||"this song")+'" from the Drive Library and clear its cache on this device?')) return;
+      try{
+        const cloudApi=window.DTMusicTrainerSongCloud;
+        if(selected._cloud&&cloudApi&&typeof cloudApi.deleteLibrarySong==="function") await cloudApi.deleteLibrarySong(selected.id);
+        await api.deleteSong(selected.id);
+        libraryState.selectedId="";
+        libraryState.detailOpen=false;
+        libraryState.message="Song deleted from the Library.";
+        await renderLibraryPage();
+      }catch(error){setLibraryMessage(error.message||"Could not delete song.");}
     };
 
     const back=$("p76MobileBack"); if(back) back.onclick=()=>{libraryState.detailOpen=false;root.classList.remove("p76-show-detail");};
