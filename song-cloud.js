@@ -210,7 +210,13 @@
   }
 
   function initGoogleTokenClient(){
-    if(googleTokenClient || !(window.google && google.accounts && google.accounts.oauth2)) return !!googleTokenClient;
+    if(!(window.google && google.accounts && google.accounts.oauth2)) return false;
+    if(googleTokenClient){
+      if(!driveToken&&session&&session.role==="teacher"&&driveSessionActive()&&localStorage.getItem(DRIVE_CONNECTED_KEY)){
+        setTimeout(()=>restoreDriveSessionAndSync(),0);
+      }
+      return true;
+    }
     googleTokenClient = google.accounts.oauth2.initTokenClient({
       client_id:GOOGLE_CLIENT_ID,
       scope:DRIVE_SCOPE,
