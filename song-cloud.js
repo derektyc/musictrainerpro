@@ -683,7 +683,8 @@
       const F=fb();
       const s=session||currentSession();
       if(!F||!s||s.role!=="teacher"||!s.academyId) return null;
-      if(!driveToken&&!restoreToken()){
+      try{await ensureDriveToken();}
+      catch(error){
         emit("pending","Connect Google Drive to sync the teacher Library");
         return null;
       }
@@ -763,7 +764,8 @@
   async function syncTeacherLibrary(){
     const s=session||currentSession();
     if(!s||s.role!=="teacher"||!s.academyId) return [];
-    if(!driveToken&&!restoreToken()) return await getLibraryIndex();
+    try{await ensureDriveToken();}
+    catch(error){return await getLibraryIndex();}
 
     await ensureDriveFolders();
     const cloud=await cloudSongRecords().catch(()=>[]);
@@ -835,8 +837,9 @@
       }
       if(local&&sameAsset(local[kind],remote)) return local[kind];
 
-      if(isMasterAsset(meta,kind) && !driveToken && !restoreToken()){
-        throw new Error("Reconnect Google Drive to open this Library file.");
+      if(isMasterAsset(meta,kind)){
+        try{await ensureDriveToken();}
+        catch(error){throw new Error("Reconnect Google Drive to open this Library file.");}
       }
 
       emit("syncing","Downloading "+(meta.title||"song")+" "+(kind==="interactive"?"score":kind==="pdf"?"PDF":"backing track")+"…");
@@ -902,7 +905,8 @@
 
     const meta=snap.data()||{};
     if(meta.libraryFolderId){
-      if(!driveToken&&!restoreToken()) throw new Error("Reconnect Google Drive to rename this Library song.");
+      try{await ensureDriveToken();}
+      catch(error){throw new Error("Reconnect Google Drive to rename this Library song.");}
       await renameDriveItem(meta.libraryFolderId,next);
     }
 
@@ -929,7 +933,10 @@
     if(snap.exists()){
       const meta=snap.data()||{};
       const hasDriveFiles=!!meta.libraryFolderId||Object.values(meta.assets||{}).some(Boolean);
-      if(hasDriveFiles&&!driveToken&&!restoreToken()) throw new Error("Reconnect Google Drive before deleting this cloud song.");
+      if(hasDriveFiles){
+        try{await ensureDriveToken();}
+        catch(error){throw new Error("Reconnect Google Drive before deleting this cloud song.");}
+      }
       if(meta.libraryFolderId) await trashDriveItem(meta.libraryFolderId);
       for(const asset of Object.values(meta.assets||{})){
         if(asset&&asset.fileId) await trashDriveItem(asset.fileId);
@@ -961,7 +968,8 @@
       const F=fb();
       const s=session||currentSession();
       if(!F||!s||s.role!=="teacher"||!s.academyId) return null;
-      if(!driveToken&&!restoreToken()){
+      try{await ensureDriveToken();}
+      catch(error){
         emit("pending","Connect Google Drive to publish assigned song materials");
         return null;
       }
