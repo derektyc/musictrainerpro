@@ -303,11 +303,13 @@
   }
 
   function libraryCloudLabel(song){
-    const related=libraryAssignmentsFor(song.id);
-    if(!related.length) return {text:"Local",cls:""};
-    return libraryDriveConnected()
-      ? {text:"Assigned · Drive connected",cls:"ok"}
-      : {text:"Assigned · Reconnect Drive",cls:"warn"};
+    if(!song) return {text:"",cls:""};
+    if(song._cloud){
+      if(libraryDriveConnected()) return {text:"Drive master",cls:"ok"};
+      return {text:"Cloud catalogue · reconnect to open",cls:"warn"};
+    }
+    if(libraryDriveConnected()) return {text:"Local changes · syncing",cls:"warn"};
+    return {text:"Local only · connect Drive",cls:"warn"};
   }
 
   function libraryFilterMatch(song){
@@ -347,13 +349,20 @@
 
   async function openLibraryInteractive(songId){
     const api=window.DTMusicTrainerLibrary;
+    const cloudApi=window.DTMusicTrainerSongCloud;
     if(!api||typeof api.openInteractive!=="function") return;
     try{
+      setLibraryMessage("Preparing interactive score…");
+      if(cloudApi&&typeof cloudApi.ensureLibraryAsset==="function"){
+        await cloudApi.ensureLibraryAsset(songId,"interactive");
+      }
       await api.selectSong(songId);
+      libraryState.message="";
       navigate("practice");
       setTimeout(()=>api.openInteractive(songId).catch(error=>console.error(error)),80);
     }catch(error){
       console.error("Library interactive open failed",error);
+      setLibraryMessage(error.message||"Could not open interactive score.");
     }
   }
 
@@ -370,9 +379,14 @@
 
     let songs=[];
     try{
-      songs=await Promise.resolve(api.getAllSongs());
+      const cloudApi=window.DTMusicTrainerSongCloud;
+      songs=cloudApi&&typeof cloudApi.getLibraryIndex==="function"
+        ? await cloudApi.getLibraryIndex()
+        : await Promise.resolve(api.getAllSongs());
     }catch(error){
-      console.error("Library load failed",error);
+      console.error("Cloud Library load failed",error);
+      try{songs=await Promise.resolve(api.getAllSongs());}catch(fallbackError){songs=[];}
+      libraryState.message=error.message||"Cloud Library is unavailable. Showing the local cache.";
     }
     if(token!==libraryRenderToken||currentRoute!=="library") return;
     librarySongs=Array.isArray(songs)?songs.slice().sort((a,b)=>String(a.title||"").localeCompare(String(b.title||""))):[];
@@ -453,24 +467,24 @@
     }
 
     root.innerHTML=
-      pageHead("Teaching materials","Song Library","Find, manage, preview and assign your teaching materials.",
+      pageHead("Teaching materials","Song Library","Google Drive is the master Library. Files are cached on this device only when you open them.",
         '<button id="p76AddSong" class="p7-primary" type="button">+ Add Song</button>')+
       '<div id="p76LibraryMessage" class="p76-message" aria-live="polite" '+(libraryState.message?"":"hidden")+'>'+escapeHtml(libraryState.message||"")+'</div>'+
       '<div class="p76-stats">'+
-        metric("Songs",total,"In this device")+
+        metric("Songs",total,"In cloud catalogue")+
         metric("Interactive",interactiveCount,"Ready for guided practice")+
         metric("PDF",pdfCount,"Scores attached")+
         metric("Backing",backingCount,"Tracks attached")+
         metric("Assigned",assignedCount,"Used by assignments")+
       '</div>'+
       '<div class="p76-health"><div><strong>Library Health</strong><span>'+(missingInteractive?"⚠ "+missingInteractive+" without interactive score":"✓ All songs have interactive scores")+'</span></div>'+
-        '<span>'+(missingLocalAssigned?"⚠ "+missingLocalAssigned+" assigned song"+(missingLocalAssigned===1?" is":"s are")+" missing locally":"✓ Assigned songs are present locally")+'</span>'+
+        '<span>'+(missingLocalAssigned?"⚠ "+missingLocalAssigned+" assigned song"+(missingLocalAssigned===1?" is":"s are")+" missing from the catalogue":"✓ Assigned songs are in the catalogue")+'</span>'+
         '<span>'+(assignedNoPdf?"⚠ "+assignedNoPdf+" assigned without PDF":"✓ Assigned PDFs look good")+'</span>'+
         '<span>'+(assignedNoBacking?"⚠ "+assignedNoBacking+" assigned without backing":"✓ Assigned backing tracks look good")+'</span></div>'+
       '<div class="p76-toolbar"><div class="p76-search-wrap"><input id="p76Search" type="search" placeholder="Search songs…" value="'+escapeHtml(libraryState.search)+'"></div>'+
         '<div class="p76-filters">'+["all","interactive","pdf","backing","assigned","incomplete"].map(key=>'<button data-p76-filter="'+key+'" class="'+(libraryState.filter===key?"active":"")+'" type="button">'+({all:"All",interactive:"Interactive",pdf:"PDF",backing:"Backing",assigned:"Assigned",incomplete:"Incomplete"}[key])+'</button>').join("")+'</div>'+
         '<div class="p76-toolbar-actions"><button id="p76BulkAdd" class="p7-secondary" type="button">Add Files</button><button id="p76SaveZip" class="p7-secondary" type="button">Save ZIP</button><button id="p76LoadZip" class="p7-secondary" type="button">Load ZIP</button></div><input id="p76BulkFile" type="file" multiple hidden accept=".pdf,.gp,.gpx,.gp3,.gp4,.gp5,.gp6,.gp7,.gp8,.musicxml,.mxl,.xml,.mp3,.wav,application/pdf,application/xml,text/xml,audio/mpeg,audio/wav,audio/x-wav"></div>'+
-      '<div id="p76Dropzone" class="p76-dropzone">Drop Guitar Pro / MusicXML, PDF, MP3 or WAV files here — matching filenames are grouped automatically.</div>'+
+      '<div id="p76Dropzone" class="p76-dropzone">Drop Guitar Pro / MusicXML, PDF, MP3 or WAV files here — matching filenames are grouped, then synced to your Drive Library.</div>'+
       '<div class="p76-library-layout"><section id="p76Catalog" class="p76-catalog">'+
         '<div class="p76-catalog-head"><strong>'+visible.length+' song'+(visible.length===1?"":"s")+'</strong><span>'+escapeHtml(libraryState.filter==="all"?"All materials":libraryState.filter)+'</span></div>'+
         '<div class="p76-song-list">'+(listHtml||'<div class="p7-empty">'+(librarySongs.length?"No songs match this filter.":"Your library is empty. Add a song or drop files above.")+'</div>')+'</div></section>'+
@@ -950,8 +964,11 @@
 
   async function loadAssignmentWizardSongs(){
     try{
+      const cloudApi=window.DTMusicTrainerSongCloud;
       const api=window.DTMusicTrainerLibrary;
-      const rows=api&&typeof api.getAllSongs==="function" ? await Promise.resolve(api.getAllSongs()) : [];
+      const rows=cloudApi&&typeof cloudApi.getLibraryIndex==="function"
+        ? await cloudApi.getLibraryIndex()
+        : (api&&typeof api.getAllSongs==="function" ? await Promise.resolve(api.getAllSongs()) : []);
       assignmentWizardSongs=Array.isArray(rows)?rows.slice().sort((a,b)=>String(a.title||"").localeCompare(String(b.title||""))):[];
     }catch(error){
       console.error("Assignment wizard library load failed",error);
@@ -2060,6 +2077,9 @@
     if(currentRoute==="library") renderLibraryPage();
   });
   window.addEventListener("dtmtp:cloud-status",()=>{
+    if(currentRoute==="library") renderLibraryPage();
+  });
+  window.addEventListener("dtmtp:library-index-changed",()=>{
     if(currentRoute==="library") renderLibraryPage();
   });
 
