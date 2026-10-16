@@ -1239,7 +1239,7 @@
         throw new Error("Unsupported library backup.");
       }
 
-      if (!confirm("Load this DT Music Trainer Pro library?\n\nThis replaces the current local Pro library on this device.")) {
+      if (!confirm("Import this DT Music Trainer Pro library backup?\n\nThis replaces the current local cache on this device. Existing cloud Library songs are not automatically deleted; restored songs will sync to Google Drive.")) {
         setStatus("Load cancelled.");
         return;
       }
