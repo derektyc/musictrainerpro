@@ -279,6 +279,7 @@ Implemented:
 - Save ZIP explicitly hydrates uncached cloud files to create a complete backup; Load ZIP is presented as Import ZIP and restored songs sync back to Drive.
 - Added Sync Drive control to the teacher Library.
 - Platform typography received a comfortable readability pass, increasing common 7–10px labels/copy into approximately 10–14px ranges while retaining compact layouts.
+- Google Drive access tokens now attempt silent renewal while the same browser session remains active, reducing repeated reconnect prompts when the short-lived access token expires. If Google requires fresh interaction, the UI falls back to Reconnect Google Drive instead of pretending the session is usable.
 
 Automated checks completed:
 - Cloud catalogue merges Firestore metadata with local IndexedDB cache without downloading asset bytes.
@@ -292,6 +293,7 @@ Automated checks completed:
 - Assigned distribution metadata receives the copied Drive file IDs.
 - Existing student assignment distribution flow remains separate.
 - Main JavaScript syntax and Phase 7 CSS balance continue to pass.
+- Same-browser Drive token renewal was simulated: an expired token silently obtained a fresh token and subsequent Drive requests reused it without another prompt.
 
 Pending real-account checks:
 - Connect Google Drive and confirm DT Music Trainer Pro / Library is created beside Assigned Materials.
