@@ -605,8 +605,18 @@
       for(const kind of ["interactive","pdf","audio"]){
         if(song[kind]&&song[kind].blob){
           libraryAssets[kind]=await uploadAsset(song[kind],oldMaster[kind]||null,folderId,false);
+        }else if(oldMaster[kind]){
+          libraryAssets[kind]=oldMaster[kind];
+        }else if(old.assets&&old.assets[kind]){
+          // One-time migration path for songs that existed in Assigned Materials before
+          // the Drive master Library was introduced. Copy the existing public asset into
+          // the private song folder without making it part of the local cache.
+          const legacyAsset=await downloadDriveAsset(old.assets[kind]);
+          libraryAssets[kind]=legacyAsset
+            ? await uploadAsset(legacyAsset,null,folderId,false)
+            : null;
         }else{
-          libraryAssets[kind]=oldMaster[kind]||null;
+          libraryAssets[kind]=null;
         }
       }
 
