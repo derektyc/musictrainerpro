@@ -10,6 +10,7 @@
   const GOOGLE_API_KEY = "AIzaSyAJvltLC7N4pXYfZu_0La8ee-W7T11uUC0";
   const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
   const ROOT_NAME = "DT Music Trainer Pro";
+  const LIBRARY_NAME = "Library";
   const MATERIALS_NAME = "Assigned Materials";
   const DRIVE_CONNECTED_KEY = "dtmtp-pro-drive-connected-v1";
   const DRIVE_TOKEN_KEY = "dtmtp-pro-drive-token-v1";
@@ -19,12 +20,17 @@
   let googleTokenClient = null;
   let driveToken = "";
   let driveRootId = "";
+  let libraryFolderId = "";
   let materialsFolderId = "";
   let uploadTimer = null;
+  let librarySyncTimer = null;
   let startupTimer = null;
   let toastTimer = null;
   const publishing = new Map();
+  const libraryPublishing = new Map();
+  const libraryPublishTimers = new Map();
   const downloading = new Map();
+  const libraryDownloading = new Map();
 
   const $ = id => document.getElementById(id);
   function fb(){ return window.DTMTPFirebase || null; }
@@ -65,17 +71,17 @@
     card.id = "dtmtpDriveMaterialsCard";
     card.style.cssText = "margin:14px 0;padding:12px;border:1px solid #444;border-radius:10px;background:#242424";
     card.innerHTML = `
-      <h3 style="margin:0 0 5px">Google Drive Materials</h3>
-      <p style="margin:0 0 9px;color:#aaa;font-size:10px;line-height:1.45">
-        Assigned MusicXML/Guitar Pro, PDF and MP3/WAV files are stored in your Google Drive.
-        Students download them through the assignment and cache them on their device.
+      <h3 style="margin:0 0 5px">Google Drive Library</h3>
+      <p style="margin:0 0 9px;color:#aaa;font-size:12px;line-height:1.5">
+        Google Drive stores the teacher Library master files. Music Trainer downloads and caches each score,
+        PDF or backing track only when you open it. Assigned Materials stays separate for students.
       </p>
       <button id="dtmtpDriveConnectBtn" class="auth-primary" type="button">Connect Google Drive</button>
       <div id="dtmtpDriveStatus" class="auth-cloud-status" style="margin-top:8px">
         <span class="auth-cloud-dot"></span><span>Google Drive not connected</span>
       </div>
-      <div style="margin-top:7px;color:#888;font-size:9px;line-height:1.4">
-        Assigned files are shared as “Anyone with the link” so students do not need a Google account.
+      <div style="margin-top:7px;color:#888;font-size:11px;line-height:1.45">
+        Teacher Library files stay private. Only copies in Assigned Materials are shared for student access.
       </div>
     `;
     host.insertBefore(card,host.firstChild);
@@ -85,7 +91,7 @@
       $("dtmtpDriveConnectBtn").textContent = "Google Drive Connected";
       setDriveStatus("Google Drive session restored","synced");
     }else if(localStorage.getItem(DRIVE_CONNECTED_KEY)){
-      setDriveStatus("Reconnect Google Drive to upload materials","pending");
+      setDriveStatus("Reconnect Google Drive to sync the Library","pending");
     }
   }
 
@@ -165,8 +171,9 @@
         if(btn) btn.textContent = "Google Drive Connected";
         try{
           await ensureDriveFolders();
+          await syncTeacherLibrary();
           await publishAssignedSongs();
-          emit("synced","Google Drive materials ready");
+          emit("synced","Google Drive Library ready");
         }catch(error){
           console.error("Google Drive materials setup failed",error);
           emit("error",friendlyDriveError(error).message);
@@ -245,11 +252,16 @@
     const academy=snap.exists()?snap.data():{};
 
     driveRootId=academy.driveRootId||"";
+    libraryFolderId=academy.driveLibraryFolderId||"";
     materialsFolderId=academy.driveMaterialsFolderId||"";
 
     if(!(await folderExists(driveRootId))){
       driveRootId=await createFolder(ROOT_NAME,"");
+      libraryFolderId="";
       materialsFolderId="";
+    }
+    if(!(await folderExists(libraryFolderId))){
+      libraryFolderId=await createFolder(LIBRARY_NAME,driveRootId);
     }
     if(!(await folderExists(materialsFolderId))){
       materialsFolderId=await createFolder(MATERIALS_NAME,driveRootId);
@@ -257,12 +269,13 @@
 
     await F.updateDoc(academyRef,{
       driveRootId,
+      driveLibraryFolderId:libraryFolderId,
       driveMaterialsFolderId:materialsFolderId,
       driveProvider:"google-drive",
       updatedAt:F.serverTimestamp()
     });
 
-    return {driveRootId,materialsFolderId};
+    return {driveRootId,libraryFolderId,materialsFolderId};
   }
 
   function assignments(){
@@ -304,6 +317,23 @@
       return await new Promise((resolve,reject)=>{
         const req=db.transaction(STORE_NAME,"readonly").objectStore(STORE_NAME).get(songId);
         req.onsuccess=()=>resolve(req.result||null);
+        req.onerror=()=>reject(req.error);
+      });
+    }finally{try{db.close();}catch(error){}}
+  }
+
+  async function localSongs(){
+    if(window.DTMusicTrainerLibrary && window.DTMusicTrainerLibrary.getAllSongs){
+      try{
+        const rows=await window.DTMusicTrainerLibrary.getAllSongs();
+        return Array.isArray(rows)?rows:[];
+      }catch(error){}
+    }
+    const db=await openDb();
+    try{
+      return await new Promise((resolve,reject)=>{
+        const req=db.transaction(STORE_NAME,"readonly").objectStore(STORE_NAME).getAll();
+        req.onsuccess=()=>resolve(Array.isArray(req.result)?req.result:[]);
         req.onerror=()=>reject(req.error);
       });
     }finally{try{db.close();}catch(error){}}
@@ -360,9 +390,9 @@
     }
   }
 
-  async function createDriveAsset(asset){
+  async function createDriveAsset(asset,parentId,publicRead){
     const boundary="dtmtp_" + Date.now() + "_" + Math.random().toString(36).slice(2);
-    const meta={name:safeName(asset.name),parents:[materialsFolderId]};
+    const meta={name:safeName(asset.name),parents:[parentId||materialsFolderId]};
     if(asset.mime) meta.mimeType=asset.mime;
     const body=new Blob([
       "--"+boundary+"\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n"+JSON.stringify(meta)+"\r\n",
@@ -375,15 +405,15 @@
       {method:"POST",headers:{"Content-Type":"multipart/related; boundary="+boundary},body}
     );
     const file=await response.json();
-    await makeAnyoneReader(file.id);
+    if(publicRead!==false) await makeAnyoneReader(file.id);
     const metaResponse=await driveFetch(
       "https://www.googleapis.com/drive/v3/files/" + encodeURIComponent(file.id) + "?fields=id,resourceKey"
     );
     return await metaResponse.json();
   }
 
-  async function updateDriveAsset(existing,asset){
-    if(!existing||!existing.fileId) return await createDriveAsset(asset);
+  async function updateDriveAsset(existing,asset,parentId,publicRead){
+    if(!existing||!existing.fileId) return await createDriveAsset(asset,parentId,publicRead);
     try{
       await driveFetch(
         "https://www.googleapis.com/upload/drive/v3/files/" + encodeURIComponent(existing.fileId) + "?uploadType=media&fields=id,resourceKey",
@@ -395,23 +425,44 @@
           {method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:safeName(asset.name)})}
         );
       }
+      if(publicRead!==false) await makeAnyoneReader(existing.fileId);
       const response=await driveFetch(
         "https://www.googleapis.com/drive/v3/files/" + encodeURIComponent(existing.fileId) + "?fields=id,resourceKey"
       );
       return await response.json();
     }catch(error){
-      if(error&&error.status===404) return await createDriveAsset(asset);
+      if(error&&error.status===404) return await createDriveAsset(asset,parentId,publicRead);
       throw error;
     }
   }
 
-  async function uploadAsset(asset,existing){
+  async function uploadAsset(asset,existing,parentId,publicRead){
     if(!asset||!asset.blob) return null;
     if(existing&&existing.provider==="google-drive"&&existing.revision===assetRevision(asset)) return existing;
     const file=existing&&existing.provider==="google-drive"
-      ? await updateDriveAsset(existing,asset)
-      : await createDriveAsset(asset);
+      ? await updateDriveAsset(existing,asset,parentId,publicRead)
+      : await createDriveAsset(asset,parentId,publicRead);
     return assetMeta(asset,file);
+  }
+
+  async function renameDriveItem(fileId,name){
+    if(!fileId) return;
+    await driveFetch(
+      "https://www.googleapis.com/drive/v3/files/" + encodeURIComponent(fileId) + "?fields=id",
+      {method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:safeName(name)})}
+    );
+  }
+
+  async function trashDriveItem(fileId){
+    if(!fileId) return;
+    try{
+      await driveFetch(
+        "https://www.googleapis.com/drive/v3/files/" + encodeURIComponent(fileId) + "?fields=id",
+        {method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({trashed:true})}
+      );
+    }catch(error){
+      if(!(error&&error.status===404)) throw error;
+    }
   }
 
   function friendlyDriveError(error){
@@ -453,7 +504,7 @@
 
         for(const kind of ["interactive","pdf","audio"]){
           assets[kind]=song[kind]&&song[kind].blob
-            ? await uploadAsset(song[kind],oldAssets[kind]||null)
+            ? await uploadAsset(song[kind],oldAssets[kind]||null,materialsFolderId,true)
             : null;
         }
 
