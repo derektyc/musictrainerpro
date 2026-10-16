@@ -674,6 +674,30 @@
     return await getLibraryIndex();
   }
 
+  async function ensureLocalLibraryRecord(songId){
+    let local=await localSong(songId);
+    if(local) return local;
+
+    const F=fb();
+    const s=session||currentSession();
+    if(!F||!s||s.role!=="teacher"||!s.academyId) throw new Error("Teacher cloud account is not ready.");
+    const snap=await F.getDoc(F.doc(F.db,"academies",s.academyId,"songs",songId));
+    if(!snap.exists()) throw new Error("Song not found in the cloud Library.");
+    const meta=snap.data()||{};
+    local={
+      id:songId,
+      title:meta.title||"Untitled Song",
+      createdAt:Number(meta.createdAt||Date.now()),
+      updatedAt:Number(meta.libraryUpdatedAt||meta.localUpdatedAt||Date.now()),
+      syncPoints:Array.isArray(meta.syncPoints)?meta.syncPoints:[],
+      interactive:null,
+      pdf:null,
+      audio:null
+    };
+    await saveLocalSong(local);
+    return local;
+  }
+
   async function ensureLibraryAsset(songId,kind){
     if(!["interactive","pdf","audio"].includes(kind)) throw new Error("Unsupported Library asset.");
     if(!songId) throw new Error("Choose a song first.");
@@ -1077,6 +1101,7 @@
     syncTeacherLibrary,
     publishLibrarySong,
     ensureLibraryAsset,
+    ensureLocalLibraryRecord,
     ensureTeacherLibrarySong,
     renameLibrarySong,
     deleteLibrarySong,
