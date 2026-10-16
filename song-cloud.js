@@ -445,6 +445,36 @@
     return assetMeta(asset,file);
   }
 
+  async function copyMasterAssetToAssigned(master,existing){
+    if(!master||!master.fileId) return null;
+    if(existing&&existing.fileId&&existing.sourceRevision&&existing.sourceRevision===master.revision) return existing;
+
+    const headers={"Content-Type":"application/json"};
+    if(master.resourceKey) headers["X-Goog-Drive-Resource-Keys"]=master.fileId+"/"+master.resourceKey;
+    const response=await driveFetch(
+      "https://www.googleapis.com/drive/v3/files/"+encodeURIComponent(master.fileId)+"/copy?fields=id,resourceKey",
+      {method:"POST",headers,body:JSON.stringify({name:safeName(master.name||"file"),parents:[materialsFolderId]})}
+    );
+    const file=await response.json();
+    await makeAnyoneReader(file.id);
+
+    if(existing&&existing.fileId&&existing.fileId!==file.id){
+      try{await trashDriveItem(existing.fileId);}catch(error){console.warn("Could not trash superseded assigned material",error);}
+    }
+
+    return {
+      provider:"google-drive",
+      fileId:file.id,
+      resourceKey:file.resourceKey||"",
+      name:String(master.name||"file"),
+      mime:String(master.mime||""),
+      size:Number(master.size||0),
+      updatedAt:Number(master.updatedAt||Date.now()),
+      revision:String(master.revision||""),
+      sourceRevision:String(master.revision||"")
+    };
+  }
+
   async function renameDriveItem(fileId,name){
     if(!fileId) return;
     await driveFetch(
@@ -863,7 +893,7 @@
       const s=session||currentSession();
       if(!F||!s||s.role!=="teacher"||!s.academyId) return null;
       if(!driveToken&&!restoreToken()){
-        emit("pending","Connect Google Drive to upload assigned song materials");
+        emit("pending","Connect Google Drive to publish assigned song materials");
         return null;
       }
 
@@ -871,45 +901,54 @@
       if(song){
         try{await publishLibrarySong(songId);}catch(error){console.warn("Master Library sync before assignment failed",error);}
       }
-      try{
-        const hydrated=await ensureTeacherLibrarySong(songId);
-        if(hydrated) song=hydrated;
-      }catch(error){
-        console.warn("Could not hydrate all master Library assets before assignment publish",error);
-      }
-      if(!song) return null;
 
       await ensureDriveFolders();
-      emit("syncing","Publishing " + (song.title||"song") + " for student access…");
+      const metaRef=F.doc(F.db,"academies",s.academyId,"songs",songId);
+      const oldSnap=await F.getDoc(metaRef);
+      const old=oldSnap.exists()?oldSnap.data():{};
+      const master=old.libraryAssets||{};
+      const oldAssets=old.assets||{};
+      const hasMaster=Object.values(master).some(Boolean);
+
+      if(!song&&!hasMaster) return null;
+
+      const source={
+        id:songId,
+        title:(old.title||(song&&song.title)||"Untitled Song"),
+        createdAt:Number(old.createdAt||(song&&song.createdAt)||Date.now()),
+        updatedAt:Number(old.libraryUpdatedAt||(song&&song.updatedAt)||Date.now()),
+        syncPoints:Array.isArray(old.syncPoints)?old.syncPoints:(Array.isArray(song&&song.syncPoints)?song.syncPoints:[])
+      };
+
+      emit("syncing","Publishing "+source.title+" for student access…");
+      const assets={};
 
       try{
-        const metaRef=F.doc(F.db,"academies",s.academyId,"songs",songId);
-        const oldSnap=await F.getDoc(metaRef);
-        const old=oldSnap.exists()?oldSnap.data():{};
-        const oldAssets=old.assets||{};
-        const assets={};
-
         for(const kind of ["interactive","pdf","audio"]){
-          assets[kind]=song[kind]&&song[kind].blob
-            ? await uploadAsset(song[kind],oldAssets[kind]||null,materialsFolderId,true)
-            : (oldAssets[kind]||null);
+          if(master[kind]){
+            assets[kind]=await copyMasterAssetToAssigned(master[kind],oldAssets[kind]||null);
+          }else if(song&&song[kind]&&song[kind].blob){
+            assets[kind]=await uploadAsset(song[kind],oldAssets[kind]||null,materialsFolderId,true);
+          }else{
+            assets[kind]=oldAssets[kind]||null;
+          }
         }
 
         await F.setDoc(metaRef,{
-          id:song.id,
-          title:song.title||"Untitled Song",
+          id:source.id,
+          title:source.title,
           provider:"google-drive",
-          createdAt:Number(song.createdAt||Date.now()),
-          localUpdatedAt:Number(song.updatedAt||Date.now()),
-          syncPoints:Array.isArray(song.syncPoints)?song.syncPoints:[],
+          createdAt:source.createdAt,
+          localUpdatedAt:source.updatedAt,
+          syncPoints:source.syncPoints,
           assets,
           updatedAt:F.serverTimestamp()
         },{merge:true});
 
-        emit("synced",(song.title||"Song") + " materials synced to Google Drive");
+        emit("synced",source.title+" assigned materials ready");
         return {songId,assets};
       }catch(error){
-        console.error("Google Drive song upload failed",error);
+        console.error("Google Drive assignment publish failed",error);
         const friendly=friendlyDriveError(error);
         emit("error",friendly.message);
         throw friendly;
