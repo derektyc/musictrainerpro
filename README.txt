@@ -43,11 +43,13 @@ PHASE 7 FEATURES
 - Existing Advanced Manager remains available for compatibility operations.
 
 7.6 Song Library
-- Searchable catalogue with Interactive / PDF / Backing / Assigned / Incomplete filters.
+- Searchable cloud catalogue with Interactive / PDF / Backing / Assigned / Incomplete filters.
+- Google Drive is now the teacher Library master; IndexedDB is an on-demand local cache.
 - Add Song, bulk drag-and-drop grouping, asset replacement, previews and Library Health.
+- Song details show Drive/cached state for each material.
 - Assigned-song deletion safeguards.
 - Library → Assign integrates directly with the assignment wizard.
-- Save Library ZIP / Load Library ZIP remains available.
+- Save ZIP prepares a full backup by fetching any uncached cloud files only when explicitly requested; Import ZIP syncs restored songs back to Drive.
 
 7.7 Practice player
 - Score-first practice screen.
@@ -65,10 +67,15 @@ PHASE 7 FEATURES
 - Old phase-number copy removed from the normal UI.
 
 STORAGE AND CLOUD ARCHITECTURE
-- Local song library: IndexedDB.
+- Teacher Library master files: Google Drive under DT Music Trainer Pro / Library / [Song].
+- Teacher Library catalogue/index: Firestore song metadata.
+- Teacher browser IndexedDB: on-demand cache. Merely selecting a catalogue row does not download the files.
+- Opening an Interactive score, PDF or backing track downloads/caches only that requested file.
+- Existing local-only songs migrate into the Drive master Library when the teacher Drive connection is available.
+- Assigned student materials: separate DT Music Trainer Pro / Assigned Materials copies.
+- Assignment publishing copies Drive master files into Assigned Materials without first downloading them into the teacher cache.
+- Student devices download/cache only materials referenced by their assignments.
 - Teacher/student accounts and assignment/progress sync: Firebase Authentication + Firestore.
-- Assigned song materials: existing Google Drive publishing flow.
-- Student devices download/cache assigned materials locally.
 - Firebase Storage is not used.
 
 SUPPORTED INTERACTIVE SCORE FILES
