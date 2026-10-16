@@ -229,3 +229,32 @@ Pending live/device checks:
 - Confirm sign-in / teacher setup remains scrollable on a short phone screen with the software keyboard open.
 - Confirm reduced-motion OS/browser preference does not leave essential UI state unclear.
 - Complete the still-pending authenticated Firebase / Drive / audio / student-device checks recorded under Phases 7.4–7.7.
+
+
+## Extended automated regression — 2026-10-16
+
+Additional tests completed after the Phase 7.8 build:
+- Teacher navigation creates exactly five desktop and five mobile routes; student navigation creates exactly four desktop and four mobile routes.
+- Role route guards reject teacher-only routes for students and student-only Home for teachers.
+- Navigation updates aria-current correctly, clears it from inactive items, closes the Practice Advanced Tools drawer, and resets page/stage scroll on route changes.
+- Teacher student-profile routing selects the requested student, keeps Students highlighted, activates the profile page, rejects invalid student IDs, and cannot be invoked by a student role.
+- Teacher-only notes were simulated against the Firebase document API: save, trim, preserve other students' notes, reload, unlock the editor after load, and reject student-role saves.
+- Assignment Wizard entry-state tests passed for General, Student Profile, Library-selected song, Student+Song preselection, and rejection of non-interactive preselected songs.
+- Library cloud-state tests passed for Local, Assigned + Drive connected, and Assigned + reconnect required.
+- Library > Open Interactive was simulated end-to-end through selectSong -> Practice route -> openInteractive with the same song ID.
+- Library delete primitive was tested for active-score cleanup, backing-preview cleanup, selected-song clearing, cache refresh, and harmless missing-song deletion. Assigned-song deletion remains separately guarded by the Phase 7.6 UI.
+- Practice chrome was simulated for inactive and active Guided Practice states. Song/bars/speed metadata, Start/Stop button text, position, progress, source, Play/Pause label, student-only hiding, and guided locking of Speed/Loop/Source all passed.
+- Practice progression engine was simulated from 60% -> 70% -> 80% with 2 successful reps per step. It completed after the target-speed reps, emitted the expected rep/speed-change/complete events, and ignored duplicate rep triggers while transitioning.
+- Restart Current Speed was simulated: step reps reset to zero while total reps/current speed are preserved, the restart-step event fires, and completed sessions ignore restart attempts.
+- Existing Phase 7.3/7.4 profile calculations, Phase 7.5 assignment creation/status, Phase 7.6 file grouping, Phase 7.7 Practice public state contract, Firebase sync hooks, Google Drive publishing hooks, CSS balance, JavaScript syntax, HTML ID uniqueness and Practice DOM dependencies remain passing.
+
+Still requires a real browser/account/device:
+- Firebase authentication and cross-device persistence.
+- Actual Google Drive OAuth/upload/download behaviour.
+- Browser audio playback and backing-track sync timing.
+- Real PDF popup behaviour.
+- IndexedDB persistence across a real browser refresh.
+- Real visual rendering at the recorded desktop/tablet/phone widths.
+- iOS/iPadOS safe areas, software keyboard and browser auto-zoom.
+- Real keyboard/tab order and focus-ring appearance.
+- GitHub Pages deployment/runtime verification from the public URL.
