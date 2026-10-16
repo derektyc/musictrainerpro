@@ -258,3 +258,54 @@ Still requires a real browser/account/device:
 - iOS/iPadOS safe areas, software keyboard and browser auto-zoom.
 - Real keyboard/tab order and focus-ring appearance.
 - GitHub Pages deployment/runtime verification from the public URL.
+
+
+## Cloud Library + Readability Update — 2026-10-16
+
+Implemented:
+- Google Drive is now the teacher Library master storage.
+- Drive structure adds DT Music Trainer Pro / Library alongside the existing Assigned Materials folder.
+- Each synced song receives its own private Drive folder.
+- Firestore song metadata acts as the cloud catalogue/index, so a teacher can see the Library on another device without downloading every file.
+- IndexedDB remains the local cache.
+- Selecting a song row does not download its files.
+- Opening Interactive, PDF or Backing downloads/caches only that requested asset.
+- Existing local songs automatically migrate to the Drive master when Drive is connected.
+- Legacy songs that previously existed only in Assigned Materials have a migration path into the private Drive Library.
+- Assignment publishing uses Google Drive file-copy from the private master into Assigned Materials, so assigning a cloud song does not require caching all teacher files first.
+- Assigned Materials remains separate and public-link-readable for students; teacher master files are not deliberately shared.
+- Assignment Wizard song selection now reads the cloud catalogue.
+- Library Rename / Replace / Delete actions operate against the cloud master while maintaining local cache compatibility.
+- Save ZIP explicitly hydrates uncached cloud files to create a complete backup; Load ZIP is presented as Import ZIP and restored songs sync back to Drive.
+- Added Sync Drive control to the teacher Library.
+- Platform typography received a comfortable readability pass, increasing common 7–10px labels/copy into approximately 10–14px ranges while retaining compact layouts.
+
+Automated checks completed:
+- Cloud catalogue merges Firestore metadata with local IndexedDB cache without downloading asset bytes.
+- Matching cached assets reuse their local Blob.
+- Uncached cloud assets remain metadata-only until opened.
+- ensureLibraryAsset downloads only the requested kind and reuses it on the next open.
+- Private uncached master assets require the teacher Drive connection.
+- Master uploads target the per-song Library folder and are not deliberately shared publicly.
+- Existing uncached master asset metadata is preserved when another asset changes locally.
+- Cloud-only assignment publishing copies all master assets in Drive without requiring a local teacher song.
+- Assigned distribution metadata receives the copied Drive file IDs.
+- Existing student assignment distribution flow remains separate.
+- Main JavaScript syntax and Phase 7 CSS balance continue to pass.
+
+Pending real-account checks:
+- Connect Google Drive and confirm DT Music Trainer Pro / Library is created beside Assigned Materials.
+- Confirm existing local songs receive song folders/files in Drive without losing the local copies.
+- Open Music Trainer Pro on a second teacher browser/device and confirm the full song catalogue appears before downloading any files.
+- On that second device, select a cloud song and confirm no file is cached merely by selecting the row.
+- Open only the PDF and confirm only the PDF becomes cached; Interactive/Backing should remain cloud-only until opened.
+- Open Interactive next and confirm it caches and launches Practice.
+- Use Cache & Play on a backing track and confirm the audio is cached and playable.
+- Replace a cloud asset and confirm the Drive master updates and another device sees the new version.
+- Assign a cloud-only song from a fresh teacher browser and confirm Assigned Materials is created/updated without manually opening/caching the song first.
+- Log in as the student and confirm the assignment still downloads from Assigned Materials without exposing the teacher Library UI.
+- Delete an unassigned cloud song and confirm its Drive Library folder is moved to trash and it disappears from the catalogue.
+- Confirm an assigned song remains protected from deletion.
+- Use Save ZIP from a partially cached device and confirm the backup contains all cloud assets after the explicit hydration step.
+- Import a ZIP and confirm restored songs sync into the Drive master while cloud songs not in the ZIP are not silently deleted.
+- Check the larger typography on desktop, tablet and phone for wrapping/overflow regressions.
