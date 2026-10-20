@@ -46,9 +46,9 @@ PHASE 7 FEATURES
 - Searchable cloud catalogue with Interactive / PDF / Backing / Assigned / Incomplete filters.
 - Google Drive is now the teacher Library master; IndexedDB is an on-demand local cache.
 - Add Song, bulk drag-and-drop grouping, asset replacement, previews and Library Health.
-- New interactive-score uploads auto-detect the embedded song title through alphaTab, with MusicXML/filename fallback.
-- The Add Song dialog auto-fills the title when an interactive score is selected, while still allowing a manual override.
-- Bulk uploads use the embedded interactive title while keeping matching PDF/backing-track filenames grouped with the same song.
+- New interactive-score uploads copy the interactive filename exactly into the song title, removing only the file extension.
+- The Add Song dialog auto-fills that exact interactive filename immediately and still allows a manual override.
+- Bulk uploads use the same exact interactive filename rule rather than rewriting punctuation, spaces or case.
 - Song details show Drive/cached state for each material.
 - Assigned-song deletion safeguards.
 - Library → Assign integrates directly with the assignment wizard.
@@ -56,6 +56,11 @@ PHASE 7 FEATURES
 
 7.7 Practice player
 - Score-first practice screen.
+- Synced Backing auto-sync detects a likely count-in/intro offset using score-vs-audio duration and transient click analysis.
+- The first score downbeat can therefore begin after the MP3/WAV has already started instead of forcing bar 1 to audio time 0.
+- Backing audio time is mapped through saved sync points before moving the alphaTab cursor; raw audio milliseconds are no longer written directly into the score clock.
+- Backing loops use the inverse score-to-audio mapping so loop seeks stay aligned with count-ins and sync markers.
+- Auto-sync chooses the final playback occurrence of the last bar, improving repeated scores such as drum exercises with repeat signs.
 - Simplified Play, Restart, Loop, Speed, Zoom, Synth/Backing, PDF and Guided Practice controls.
 - Teacher Advanced Tools are hidden until requested.
 - Student practice remains intentionally simplified.
