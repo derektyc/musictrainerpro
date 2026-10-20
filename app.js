@@ -91,6 +91,7 @@
   let backingLoopEnabled = false;
   let backingLoopStartMs = 0;
   let backingLoopEndMs = 0;
+  let backingSyncMap = [];
   let toastTimer = null;
   let pendingMusicXmlSystemBreaks = [];
   let pendingInteractiveIsMusicXml = false;
@@ -909,12 +910,234 @@
       .sort((a, b) => (a.barIndex + a.barPosition) - (b.barIndex + b.barPosition) || a.millisecondOffset - b.millisecondOffset);
   }
 
+  function playbackLookupForPoint(point) {
+    if (!api || !api.tickCache || !Array.isArray(api.tickCache.masterBars)) return null;
+    const matches = api.tickCache.masterBars.filter((lookup) =>
+      lookup && lookup.masterBar && lookup.masterBar.index === point.barIndex
+    );
+    if (!matches.length) return null;
+    const occurrence = Math.max(0, Math.min(matches.length - 1, Number(point.barOccurence) || 0));
+    return matches[occurrence];
+  }
+
+  function finalBarOccurrence(barIndex) {
+    if (!api || !api.tickCache || !Array.isArray(api.tickCache.masterBars)) return 0;
+    const count = api.tickCache.masterBars.filter((lookup) =>
+      lookup && lookup.masterBar && lookup.masterBar.index === barIndex
+    ).length;
+    return Math.max(0, count - 1);
+  }
+
+  function scoreTimeForSyncPoint(point) {
+    if (!api || !api.score) return 0;
+    try {
+      const lookup = playbackLookupForPoint(point);
+      if (lookup) {
+        const ratio = Math.max(0, Math.min(1, Number(point.barPosition) || 0));
+        const tick = lookup.start + (lookup.end - lookup.start) * ratio;
+        const oldTick = api.tickPosition;
+        api.tickPosition = tick;
+        const time = Number(api.timePosition) || 0;
+        api.tickPosition = oldTick;
+        return Math.max(0, Math.min(Number(api.endTime) || time, time));
+      }
+    } catch (error) {}
+
+    const bars = api.score.masterBars || [];
+    if (!bars.length) return 0;
+    const scoreEnd = Math.max(0, Number(api.endTime) || 0);
+    const absolute = Math.max(0, Math.min(bars.length, Number(point.barIndex) + Number(point.barPosition || 0)));
+    return scoreEnd * (absolute / Math.max(1, bars.length));
+  }
+
+  function rebuildBackingSyncMap(song) {
+    backingSyncMap = normalizeSyncPoints(song && song.syncPoints).map((point) => ({
+      audioMs: Math.max(0, Number(point.millisecondOffset) || 0),
+      scoreMs: scoreTimeForSyncPoint(point)
+    })).sort((a,b) => a.audioMs - b.audioMs);
+
+    // Remove duplicate audio positions so interpolation never divides by zero.
+    backingSyncMap = backingSyncMap.filter((point,index,list) =>
+      index === 0 || Math.abs(point.audioMs - list[index - 1].audioMs) > 0.5
+    );
+    return backingSyncMap;
+  }
+
+  function scoreTimeFromBackingAudio(audioMs) {
+    const map = backingSyncMap;
+    const scoreEnd = Math.max(0, Number(api && api.endTime) || 0);
+    if (!map.length) return Math.max(0, Math.min(scoreEnd || audioMs, audioMs));
+
+    if (audioMs <= map[0].audioMs) return map[0].scoreMs;
+    for (let i = 0; i < map.length - 1; i++) {
+      const a = map[i], b = map[i + 1];
+      if (audioMs <= b.audioMs) {
+        const span = b.audioMs - a.audioMs;
+        const ratio = span > 0 ? (audioMs - a.audioMs) / span : 0;
+        return a.scoreMs + (b.scoreMs - a.scoreMs) * ratio;
+      }
+    }
+
+    const last = map[map.length - 1];
+    if (!scoreEnd || last.scoreMs >= scoreEnd - 1) return last.scoreMs;
+
+    const audioEnd = Math.max(last.audioMs, (Number(el.audio.duration) || 0) * 1000);
+    const span = audioEnd - last.audioMs;
+    const ratio = span > 0 ? Math.min(1, Math.max(0, (audioMs - last.audioMs) / span)) : 1;
+    return last.scoreMs + (scoreEnd - last.scoreMs) * ratio;
+  }
+
+  function backingAudioTimeFromScore(scoreMs) {
+    const map = backingSyncMap;
+    if (!map.length) return Math.max(0, scoreMs);
+
+    if (scoreMs <= map[0].scoreMs) return map[0].audioMs;
+    for (let i = 0; i < map.length - 1; i++) {
+      const a = map[i], b = map[i + 1];
+      if (scoreMs <= b.scoreMs) {
+        const span = b.scoreMs - a.scoreMs;
+        const ratio = span > 0 ? (scoreMs - a.scoreMs) / span : 0;
+        return a.audioMs + (b.audioMs - a.audioMs) * ratio;
+      }
+    }
+
+    const last = map[map.length - 1];
+    const scoreEnd = Math.max(last.scoreMs, Number(api && api.endTime) || last.scoreMs);
+    const audioEnd = Math.max(last.audioMs, (Number(el.audio.duration) || 0) * 1000);
+    const span = scoreEnd - last.scoreMs;
+    const ratio = span > 0 ? Math.min(1, Math.max(0, (scoreMs - last.scoreMs) / span)) : 1;
+    return last.audioMs + (audioEnd - last.audioMs) * ratio;
+  }
+
+  function median(values) {
+    if (!values.length) return 0;
+    const copy = values.slice().sort((a,b) => a-b);
+    const mid = Math.floor(copy.length / 2);
+    return copy.length % 2 ? copy[mid] : (copy[mid - 1] + copy[mid]) / 2;
+  }
+
+  async function detectClickCountIn(song, beatMs) {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass || !song || !song.audio || !song.audio.blob || !beatMs) return null;
+
+    let context = null;
+    try {
+      context = new AudioContextClass();
+      const bytes = await song.audio.blob.arrayBuffer();
+      const decoded = await context.decodeAudioData(bytes.slice(0));
+      const sampleRate = decoded.sampleRate;
+      const seconds = Math.min(12, decoded.duration);
+      const sampleLimit = Math.max(1, Math.floor(seconds * sampleRate));
+      const frameSize = Math.max(64, Math.floor(sampleRate * 0.02));
+      const envelope = [];
+
+      for (let start = 0; start < sampleLimit; start += frameSize) {
+        let sum = 0, samples = 0;
+        for (let ch = 0; ch < decoded.numberOfChannels; ch++) {
+          const data = decoded.getChannelData(ch);
+          const end = Math.min(sampleLimit, start + frameSize);
+          for (let i = start; i < end; i += 4) {
+            sum += Math.abs(data[i]);
+            samples++;
+          }
+        }
+        envelope.push(samples ? sum / samples : 0);
+      }
+
+      if (envelope.length < 10) return null;
+
+      const onsets = envelope.map((value,index) => {
+        if (index < 3) return 0;
+        const from = Math.max(0, index - 5);
+        const base = envelope.slice(from,index).reduce((a,b)=>a+b,0) / Math.max(1,index-from);
+        return Math.max(0, value - base);
+      });
+      const positive = onsets.filter((v) => v > 0);
+      if (!positive.length) return null;
+      const sorted = positive.slice().sort((a,b)=>a-b);
+      const p90 = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.90))] || 0;
+      const threshold = Math.max(0.004, median(positive) * 4, p90 * 0.55);
+      const minFrames = Math.max(1, Math.floor((beatMs * 0.45) / 20));
+      const peaks = [];
+
+      for (let i = 1; i < onsets.length - 1; i++) {
+        if (onsets[i] < threshold || onsets[i] < onsets[i-1] || onsets[i] < onsets[i+1]) continue;
+        if (peaks.length && i - peaks[peaks.length - 1].frame < minFrames) {
+          if (onsets[i] > peaks[peaks.length - 1].strength) peaks[peaks.length - 1] = {frame:i,strength:onsets[i]};
+        } else {
+          peaks.push({frame:i,strength:onsets[i]});
+        }
+      }
+
+      const peakTimes = peaks.map((p) => p.frame * 20);
+      const tolerance = Math.max(140, beatMs * 0.28);
+      let best = null;
+
+      for (let startIndex = 0; startIndex < peakTimes.length; startIndex++) {
+        if (peakTimes[startIndex] > Math.max(1800, beatMs * 2)) break;
+        const sequence = [peakTimes[startIndex]];
+        let expected = peakTimes[startIndex] + beatMs;
+        for (let i = startIndex + 1; i < peakTimes.length && sequence.length < 8; i++) {
+          if (Math.abs(peakTimes[i] - expected) <= tolerance) {
+            sequence.push(peakTimes[i]);
+            expected = peakTimes[i] + beatMs;
+          }
+        }
+        if (sequence.length >= 3) {
+          const offsetMs = sequence[sequence.length - 1] + beatMs;
+          const candidate = {offsetMs, beats:sequence.length, method:"click-pattern", confidence:Math.min(0.92,0.55+sequence.length*0.08)};
+          if (!best || candidate.beats > best.beats || (candidate.beats === best.beats && candidate.offsetMs < best.offsetMs)) best = candidate;
+        }
+      }
+      return best;
+    } catch (error) {
+      console.warn("Count-in audio analysis unavailable", error);
+      return null;
+    } finally {
+      if (context && typeof context.close === "function") {
+        try { await context.close(); } catch (error) {}
+      }
+    }
+  }
+
+  async function detectBackingStartOffset(song) {
+    const audioDurationMs = Math.max(0, (Number(el.audio.duration) || 0) * 1000);
+    const scoreDurationMs = Math.max(0, Number(api && api.endTime) || 0);
+    const bpm = Math.max(1, Number(api && api.score && api.score.tempo) || 120);
+    const beatMs = 60000 / bpm;
+    const durationGap = audioDurationMs - scoreDurationMs;
+    let durationCandidate = null;
+
+    if (durationGap >= beatMs * 0.55 && durationGap <= beatMs * 12.5) {
+      const beats = Math.max(1, Math.round(durationGap / beatMs));
+      const snapped = beats * beatMs;
+      if (beats <= 12 && Math.abs(durationGap - snapped) <= Math.max(180, beatMs * 0.28)) {
+        durationCandidate = {
+          offsetMs: Math.max(0, Math.round(snapped)),
+          beats,
+          method:"duration-match",
+          confidence:0.9
+        };
+      }
+    }
+
+    const clickCandidate = await detectClickCountIn(song, beatMs);
+    if (durationCandidate && clickCandidate) {
+      if (Math.abs(durationCandidate.offsetMs - clickCandidate.offsetMs) <= Math.max(220, beatMs * 0.4)) {
+        return {...durationCandidate, method:"duration+click", confidence:0.98};
+      }
+      return durationCandidate;
+    }
+    return durationCandidate || clickCandidate || {offsetMs:0,beats:0,method:"none",confidence:0};
+  }
+
   function applySongSyncPoints(song) {
     if (!api || !api.score || !song) return false;
     const points = normalizeSyncPoints(song.syncPoints);
     try {
       api.score.applyFlatSyncPoints(points);
       api.updateSyncPoints();
+      rebuildBackingSyncMap(song);
       return points.length >= 2;
     } catch (error) {
       console.error("Could not apply sync points", error);
@@ -928,6 +1151,7 @@
     try {
       api.score.applyFlatSyncPoints([]);
       api.updateSyncPoints();
+      backingSyncMap = [];
     } catch (error) {
       console.warn("Could not clear applied sync points", error);
     }
@@ -999,8 +1223,11 @@
       });
     }
 
+    const startOffset = points.length ? Number(points[0].millisecondOffset) || 0 : 0;
     el.syncStatus.textContent = points.length >= 2
-      ? points.length + " sync point(s) ready. Extra points improve songs with intros or tempo drift."
+      ? points.length + " sync point(s) ready." +
+        (startOffset > 0 ? " Count-in / intro offset: " + formatSyncTime(startOffset) + "." : "") +
+        " Extra points improve songs with tempo drift."
       : "At least 2 sync points are recommended.";
   }
 
@@ -1013,15 +1240,31 @@
       if (!bars.length) throw new Error("The score has no bars.");
       const durationMs = el.audio.duration * 1000;
       if (!Number.isFinite(durationMs) || durationMs <= 0) throw new Error("Backing-track duration is unavailable.");
+
+      setStatus("Analysing count-in and score timing…");
+      const detected = await detectBackingStartOffset(song);
+      const startOffsetMs = Math.max(0, Math.min(durationMs - 1, Number(detected.offsetMs) || 0));
+      const lastBarIndex = bars.length - 1;
       song.syncPoints = [
-        { barIndex: 0, barOccurence: 0, barPosition: 0, millisecondOffset: 0 },
-        { barIndex: bars.length - 1, barOccurence: 0, barPosition: 1, millisecondOffset: durationMs }
+        { barIndex: 0, barOccurence: 0, barPosition: 0, millisecondOffset: startOffsetMs },
+        {
+          barIndex: lastBarIndex,
+          barOccurence: finalBarOccurrence(lastBarIndex),
+          barPosition: 1,
+          millisecondOffset: durationMs
+        }
       ];
       await putSong(song);
-      if (backingModeActive) applySongSyncPoints(song);
+      applySongSyncPoints(song);
       await refreshCache();
-      setStatus("Auto sync created start/end points for " + song.title + ".", "ok");
-      toast("Auto sync ready. If the song drifts, add bar markers while listening.");
+
+      const detectedText = startOffsetMs > 0
+        ? "Detected " + (detected.beats ? detected.beats + "-beat " : "") + "count-in / intro at " + formatSyncTime(startOffsetMs) + "."
+        : "No count-in offset detected.";
+      setStatus("Auto sync ready · " + detectedText, "ok");
+      toast(startOffsetMs > 0
+        ? "Auto sync: score starts at " + formatSyncTime(startOffsetMs) + "."
+        : "Auto sync ready. If needed, play the track and use Set Bar to fine-tune.");
     } catch (error) {
       setStatus("Could not auto sync: " + error.message, "warn");
     }
@@ -1153,10 +1396,12 @@
 
   function updateBackingLoopTimes(startBar, endBar) {
     if (!backingModeActive || !api.score) return;
-    backingLoopStartMs = scoreTimeAtBarStart(startBar - 1);
-    backingLoopEndMs = endBar < api.score.masterBars.length
+    const startScoreMs = scoreTimeAtBarStart(startBar - 1);
+    const endScoreMs = endBar < api.score.masterBars.length
       ? scoreTimeAtBarStart(endBar)
-      : (Number(el.audio.duration) || 0) * 1000;
+      : (Number(api.endTime) || 0);
+    backingLoopStartMs = backingAudioTimeFromScore(startScoreMs);
+    backingLoopEndMs = backingAudioTimeFromScore(endScoreMs);
     if (backingLoopEndMs <= backingLoopStartMs) {
       backingLoopStartMs = 0;
       backingLoopEndMs = (Number(el.audio.duration) || 0) * 1000;
@@ -1166,12 +1411,13 @@
   function syncCursorFromBacking() {
     if (!backingModeActive || !api || !api.score || activeInteractiveSongId !== selectedSongId) return;
     const audioMs = (Number(el.audio.currentTime) || 0) * 1000;
-    try { api.timePosition = audioMs; } catch (error) {}
+    const scoreMs = scoreTimeFromBackingAudio(audioMs);
+    try { api.timePosition = scoreMs; } catch (error) {}
     el.position.textContent = fmt(audioMs) + " / " + fmt((Number(el.audio.duration) || 0) * 1000);
     updateSyncCurrentTime();
     if (backingLoopEnabled && backingLoopEndMs > backingLoopStartMs && audioMs >= backingLoopEndMs - 20) {
       el.audio.currentTime = backingLoopStartMs / 1000;
-      try { api.timePosition = backingLoopStartMs; } catch (error) {}
+      try { api.timePosition = scoreTimeFromBackingAudio(backingLoopStartMs); } catch (error) {}
     }
   }
 
