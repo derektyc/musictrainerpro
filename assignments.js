@@ -201,14 +201,17 @@
       label = "Total";
     }
 
+    const remaining = Math.max(0,req.count-done);
     return {
       count:req.count,
       period:req.period,
       done,
-      met:done >= req.count,
+      remaining,
+      met:remaining === 0,
       label,
       periodKey,
-      text:req.count + "× / " + (req.period === "day" ? "day" : req.period === "week" ? "week" : "assignment")
+      text:req.count + "× / " + (req.period === "day" ? "day" : req.period === "week" ? "week" : "assignment"),
+      frequency:req.period === "day" ? req.count + "× per day" : req.period === "week" ? req.count + "× per week" : req.count + " session" + (req.count === 1 ? "" : "s") + " total"
     };
   }
 
@@ -953,6 +956,10 @@
     getStatus:id => {
       const a = data.assignments.find(x => x.id === id);
       return a ? assignmentStatus(a) : "";
+    },
+    getRequirementStatus:id => {
+      const a = data.assignments.find(x => x.id === id);
+      return a ? JSON.parse(JSON.stringify(requirementStats(a))) : null;
     },
     reloadCloudData,
     loadAssignment:loadAssignmentIntoPractice
