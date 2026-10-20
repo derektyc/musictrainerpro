@@ -19,7 +19,7 @@
   <header class="topbar">
     <div class="brand-wrap">
       <div class="brand">DT Music Trainer Pro</div>
-      <div class="sub">Phase 7.9 · Cloud Library</div>
+      <div class="sub">Phase 8.1 · Practice Requirements</div>
     </div>
     <div id="statusPill" class="status-pill">Starting…</div>
   </header>
@@ -316,6 +316,10 @@
                 <div><label for="assignmentReps">REPS / SPEED</label><input id="assignmentReps" type="number" min="1" max="20" value="3"></div>
                 <div><label for="assignmentSource">PLAYER</label><select id="assignmentSource"><option value="either">Student choice</option><option value="synth">Synth</option><option value="backing">Synced Backing</option></select></div>
               </div>
+              <div class="assignment-form-grid assignment-requirement-form">
+                <div><label for="assignmentPracticeCount">PRACTICE REQUIRED</label><input id="assignmentPracticeCount" type="number" min="1" max="20" value="1"></div>
+                <div><label for="assignmentPracticePeriod">FREQUENCY</label><select id="assignmentPracticePeriod"><option value="day">Per day</option><option value="week">Per week</option><option value="total">Total sessions</option></select></div>
+              </div>
               <div><label for="assignmentDueDate">DUE DATE</label><input id="assignmentDueDate" type="date"></div>
               <div><label for="assignmentNote">TEACHER NOTE</label><textarea id="assignmentNote" placeholder="e.g. Keep the chord changes even and clean."></textarea></div>
               <button id="assignmentCreateBtn" class="primary" type="button">Assign to Student</button>
@@ -347,9 +351,9 @@
 <div id="toast" class="toast"></div>
 <script src="./app.js?v=20261020-1"></script>
 <script src="./practice.js"></script>
-<script src="./assignments.js?v=20261016-3"></script>
-<script src="./auth.js?v=20261016-6"></script>
+<script src="./assignments.js?v=20261020-8"></script>
+<script src="./auth.js?v=20261020-8"></script>
 <script src="./song-cloud.js?v=20261020-1"></script>
-<script src="./phase7-shell.js?v=20261020-1"></script>
+<script src="./phase7-shell.js?v=20261020-8"></script>
 </body>
 </html>
