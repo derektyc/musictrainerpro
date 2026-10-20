@@ -93,3 +93,28 @@ Still requires a genuine browser/account environment:
 - Real Google Drive OAuth/material download flow.
 - Visual rendering/touch testing on actual desktop/tablet/phone browsers.
 - A real next-day / next-Monday wall-clock rollover rather than simulated timestamps.
+
+
+## Percussion MusicXML compatibility hotfix — 2026-10-20
+
+Issue reproduced conceptually from a MuseScore drum export:
+- Hi-hat/cymbal notes explicitly carry an X notehead.
+- Normal drum hits such as kick/snare/toms may omit the notehead because MusicXML defines normal as the default.
+- alphaTab can preserve the explicit X heads while leaving the implicit normal percussion heads without a visible symbol, producing stems with missing kick/snare noteheads.
+
+Fix:
+- Before loading .musicxml/.xml into alphaTab, unpitched notes with no explicit notehead receive an explicit normal notehead.
+- Existing explicit noteheads, including X hi-hats/cymbals, are preserved unchanged.
+- .mxl files are unpacked in-memory, normalized when needed, and passed to alphaTab as MusicXML.
+- The source Library file is not modified.
+- Browser cache version for app.js was bumped so existing deployments fetch the hotfix.
+
+Automated/browser-DOM test passed:
+- A MuseScore-style sample containing one explicit X hi-hat, one implicit-normal kick and one implicit-normal snare was run through the compatibility normalizer in a real Chromium DOM.
+- Exactly two noteheads were restored.
+- Final noteheads were x, normal, normal.
+- Existing X notehead remained unchanged.
+
+Regression checks passed:
+- app.js, practice.js, assignments.js, auth.js, song-cloud.js and phase7-shell.js parse successfully.
+- index.html references the new app.js cache version.
