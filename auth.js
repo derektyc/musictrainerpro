@@ -229,7 +229,7 @@
     const accountBtn = $("authAccountBtn");
     if(accountBtn) accountBtn.textContent = (account.role === "student" ? "Student · " : "Teacher · ") + (account.displayName || account.email);
     const sub = document.querySelector(".topbar .sub");
-    if(sub) sub.textContent = "Phase 7.8 · Final Polish";
+    if(sub) sub.textContent = "Phase 8.1 · Practice Requirements";
 
     if(account.role === "student"){
       const launch = $("assignmentLaunchBtn");
