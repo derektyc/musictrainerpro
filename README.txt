@@ -111,6 +111,12 @@ SUPPORTED INTERACTIVE SCORE FILES
 - .mxl
 - .xml
 
+MusicXML percussion compatibility
+- MuseScore drum exports are normalized before alphaTab loads them.
+- Unpitched percussion notes with an omitted notehead are treated as the MusicXML default "normal" notehead, restoring visible kick/snare/tom heads while preserving explicit X/cymbal noteheads.
+- The normalization also applies when opening compressed .mxl scores.
+- The original Library file is not rewritten; compatibility is applied only to the bytes passed into the interactive viewer.
+
 OTHER SUPPORTED MATERIALS
 - PDF
 - MP3
