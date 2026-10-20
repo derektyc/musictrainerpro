@@ -1,6 +1,6 @@
 # Phase 7 Testing Log
 
-Last updated: 2026-10-16
+Last updated: 2026-10-20
 
 This file tracks checks that could not be completed automatically from the repository and should be verified later in the live authenticated app.
 
@@ -311,3 +311,36 @@ Pending real-account checks:
 - Use Save ZIP from a partially cached device and confirm the backup contains all cloud assets after the explicit hydration step.
 - Import a ZIP and confirm restored songs sync into the Drive master while cloud songs not in the ZIP are not silently deleted.
 - Check the larger typography on desktop, tablet and phone for wrapping/overflow regressions.
+
+
+## Phase 7.9 — Cloud Library & Readability
+
+Automated/source-level checks already passed:
+- Song Library catalogue reads from the cloud Library index when available and falls back to IndexedDB only if needed.
+- Assignment Wizard also reads the cloud Library index, so cloud-only songs can be selected on a fresh teacher device.
+- Clicking/selecting a Library song does not call the download/cache API.
+- Opening Interactive caches only the interactive score.
+- Opening PDF caches only the PDF.
+- Opening/playing Backing caches only the backing track.
+- Google Drive master Library and Assigned Materials remain separate folders.
+- Master Library files are uploaded without public sharing; Assigned Materials copies are explicitly shared for student access.
+- Assignment publishing can copy an existing Drive master file directly into Assigned Materials without requiring a teacher-device download first.
+- Cached-vs-cloud asset revision comparison is present so stale local assets are replaced when a newer master version exists.
+- Full ZIP backup deliberately hydrates uncached cloud assets only when the teacher explicitly requests Save ZIP.
+- Comfortable typography scale is present across the Phase 7 shell, student views, teacher views, Library, Assignment Wizard, Practice, auth and compatibility surfaces.
+- Main JavaScript files parse and the Phase 7 CSS remains structurally balanced.
+
+Pending live checks:
+- Connect Google Drive as teacher and confirm DT Music Trainer Pro / Library and DT Music Trainer Pro / Assigned Materials both exist.
+- Add a new song and confirm its song folder/files appear inside the Drive Library.
+- On a second/fresh teacher browser, confirm the song appears in Library before opening any file.
+- On that fresh browser, select the song row and confirm no large file is downloaded/cached merely by selecting it.
+- Open Interactive and confirm only the interactive file becomes cached.
+- Then open PDF and confirm PDF becomes cached independently.
+- Then play Backing and confirm the audio file becomes cached independently.
+- Refresh after each cache step and confirm cached status remains correct.
+- Replace one asset on device A; on device B confirm the newer cloud asset is fetched the next time that asset is opened.
+- Create an assignment from a cloud-only song on a fresh teacher device and confirm Assigned Materials is published without having to manually open/cache the song first.
+- Confirm a student receives only the assigned material and never sees the teacher's full Library catalogue.
+- Verify the larger font scale visually on desktop, tablet and phone, especially Library badges, Dashboard metadata, Profile history, Assignment Wizard labels and Practice controls.
+- Confirm the larger type does not create overflow at 360–430px widths.
