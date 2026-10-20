@@ -1,4 +1,4 @@
-DT Music Trainer Pro — Phase 7.8
+DT Music Trainer Pro — Phase 7.9
 
 Repository scope
 - This application lives only in derektyc/musictrainerpro.
@@ -65,6 +65,17 @@ PHASE 7 FEATURES
 - Small-phone and landscape practice refinements.
 - Keyboard focus states, aria-current navigation, dialog semantics and reduced-motion support.
 - Old phase-number copy removed from the normal UI.
+
+7.9 Cloud Library & readability
+- Platform typography is enlarged across Dashboard, Students, Profiles, Assignment Wizard, Library, Practice and mobile navigation.
+- Google Drive is the teacher Library master source.
+- Firestore song metadata provides the teacher catalogue without downloading the files.
+- Selecting a song only opens its catalogue details; it does not download heavy files.
+- Interactive score, PDF and backing track are downloaded/cached independently only when opened.
+- Cached files stay in IndexedDB for faster reuse on that device.
+- A fresh teacher device can see the cloud Library before its files are cached locally.
+- Assignment publishing can copy Drive master files into Assigned Materials without first downloading them to the teacher device.
+- Existing ZIP backup/import remains available.
 
 STORAGE AND CLOUD ARCHITECTURE
 - Teacher Library master files: Google Drive under DT Music Trainer Pro / Library / [Song].
