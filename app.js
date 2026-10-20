@@ -114,6 +114,116 @@
     return m ? m[1] : "";
   }
 
+  function normalizePercussionMusicXml(xmlText) {
+    const source = String(xmlText || "");
+    if (!source.trim()) return { xml: source, changed: false, restoredNoteheads: 0 };
+
+    let doc;
+    try {
+      doc = new DOMParser().parseFromString(source, "application/xml");
+    } catch (error) {
+      return { xml: source, changed: false, restoredNoteheads: 0 };
+    }
+
+    if (!doc || doc.getElementsByTagName("parsererror").length) {
+      return { xml: source, changed: false, restoredNoteheads: 0 };
+    }
+
+    let restoredNoteheads = 0;
+    const notes = Array.from(doc.getElementsByTagName("note"));
+    const insertBeforeNames = new Set(["notehead-text","staff","beam","notations","lyric","play","listen"]);
+
+    notes.forEach((note) => {
+      const unpitched = Array.from(note.children || []).find((child) => child.localName === "unpitched");
+      if (!unpitched) return;
+
+      const existingHead = Array.from(note.children || []).find((child) => child.localName === "notehead");
+      if (existingHead) return;
+
+      // MusicXML defines an omitted notehead as the normal notehead. MuseScore relies on
+      // that default for kick/snare/toms, while alphaTab's percussion importer can leave
+      // those implicit heads without a drawable symbol. Make the default explicit.
+      const head = note.namespaceURI
+        ? doc.createElementNS(note.namespaceURI, "notehead")
+        : doc.createElement("notehead");
+      head.textContent = "normal";
+
+      const before = Array.from(note.children || []).find((child) => insertBeforeNames.has(child.localName));
+      if (before) note.insertBefore(head, before);
+      else note.appendChild(head);
+      restoredNoteheads++;
+    });
+
+    if (!restoredNoteheads) return { xml: source, changed: false, restoredNoteheads: 0 };
+
+    try {
+      return {
+        xml: new XMLSerializer().serializeToString(doc),
+        changed: true,
+        restoredNoteheads
+      };
+    } catch (error) {
+      return { xml: source, changed: false, restoredNoteheads: 0 };
+    }
+  }
+
+  async function extractMusicXmlFromMxl(bytes) {
+    if (typeof JSZip === "undefined") return "";
+    const zip = await JSZip.loadAsync(bytes);
+    let scorePath = "";
+
+    const container = zip.file("META-INF/container.xml");
+    if (container) {
+      try {
+        const containerText = await container.async("string");
+        const containerDoc = new DOMParser().parseFromString(containerText, "application/xml");
+        const rootfile = Array.from(containerDoc.getElementsByTagName("rootfile"))[0];
+        scorePath = rootfile ? String(rootfile.getAttribute("full-path") || "") : "";
+      } catch (error) {}
+    }
+
+    if (!scorePath || !zip.file(scorePath)) {
+      const candidates = Object.keys(zip.files).filter((name) =>
+        !zip.files[name].dir &&
+        !/^META-INF\//i.test(name) &&
+        /\.(musicxml|xml)$/i.test(name)
+      );
+      scorePath = candidates[0] || "";
+    }
+
+    const entry = scorePath ? zip.file(scorePath) : null;
+    return entry ? await entry.async("string") : "";
+  }
+
+  async function prepareInteractiveForAlphaTab(asset) {
+    const rawBuffer = await asset.blob.arrayBuffer();
+    const rawBytes = new Uint8Array(rawBuffer);
+    const ext = extension(asset.name);
+
+    if (!["musicxml","xml","mxl"].includes(ext)) {
+      return { bytes: rawBytes, percussionFixes: 0 };
+    }
+
+    let xmlText = "";
+    try {
+      if (ext === "mxl") xmlText = await extractMusicXmlFromMxl(rawBytes);
+      else xmlText = new TextDecoder("utf-8").decode(rawBytes);
+    } catch (error) {
+      console.warn("MusicXML compatibility check could not read the score", error);
+      return { bytes: rawBytes, percussionFixes: 0 };
+    }
+
+    if (!xmlText) return { bytes: rawBytes, percussionFixes: 0 };
+
+    const normalized = normalizePercussionMusicXml(xmlText);
+    if (!normalized.changed) return { bytes: rawBytes, percussionFixes: 0 };
+
+    return {
+      bytes: new TextEncoder().encode(normalized.xml),
+      percussionFixes: normalized.restoredNoteheads
+    };
+  }
+
   function classifyFile(file) {
     const ext = extension(file && file.name);
     if (INTERACTIVE_EXTS.has(ext)) return "interactive";
@@ -1050,13 +1160,17 @@
     setStatus("Loading " + song.interactive.name + "…");
 
     try {
-      const buffer = await song.interactive.blob.arrayBuffer();
-      const accepted = api.load(new Uint8Array(buffer));
+      const prepared = await prepareInteractiveForAlphaTab(song.interactive);
+      const accepted = api.load(prepared.bytes);
       if (!accepted) {
         throw new Error("alphaTab did not recognise this interactive score. MuseScore .mscz files must be exported as MusicXML first.");
       }
       el.viewerTitle.textContent = song.title;
-      el.viewerMeta.textContent = "Interactive score · " + song.interactive.name;
+      el.viewerMeta.textContent = "Interactive score · " + song.interactive.name +
+        (prepared.percussionFixes ? " · Drum notation compatibility applied" : "");
+      if (prepared.percussionFixes) {
+        toast("Drum score fixed · restored " + prepared.percussionFixes + " normal notehead" + (prepared.percussionFixes === 1 ? "" : "s") + ".");
+      }
     } catch (error) {
       console.error(error);
       el.loading.style.display = "none";
@@ -1574,7 +1688,11 @@
     openInteractive:openInteractiveById,
     openPdf:openPdfById,
     playAudio:playAudioById,
-    stopAudio:stopBackingAudio
+    stopAudio:stopBackingAudio,
+    diagnoseMusicXml:(xmlText)=> {
+      const result=normalizePercussionMusicXml(xmlText);
+      return {changed:result.changed,restoredNoteheads:result.restoredNoteheads};
+    }
   };
 
   async function init() {
