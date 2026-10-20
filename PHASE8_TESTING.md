@@ -118,3 +118,19 @@ Automated/browser-DOM test passed:
 Regression checks passed:
 - app.js, practice.js, assignments.js, auth.js, song-cloud.js and phase7-shell.js parse successfully.
 - index.html references the new app.js cache version.
+
+
+## MuseScore system-break preservation hotfix — 2026-10-20
+
+Behavior:
+- MusicXML <print new-system="yes"> and <print new-page="yes"> markers are detected before alphaTab loads the score.
+- Forced break indices are propagated to every rendered track so multi-track scores keep the same minimum system boundaries.
+- Responsive alphaTab wrapping remains enabled; narrow screens may wrap earlier, but a forced MuseScore break cannot be collapsed away.
+- Imported break state is cleared after each score load so one song cannot leak its layout into another.
+
+Automated/source checks passed:
+- A simulated 8-bar MuseScore score with new-system="yes" on measure 5 produced the expected break index [4], meaning bars 1–4 stay on the first system.
+- Duplicate break markers across multiple parts are de-duplicated.
+- new-page="yes" is treated as a forced system boundary too.
+- app.js and the rest of the main JavaScript bundle parse successfully.
+- index.html references the refreshed app.js cache version.
