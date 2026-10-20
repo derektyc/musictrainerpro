@@ -2100,7 +2100,7 @@
     buildNav();
 
     const sub=document.querySelector(".topbar .sub");
-    if(sub) sub.textContent="Phase 7.8 · Final Polish";
+    if(sub) sub.textContent="Phase 7.9 · Cloud Library";
 
     let desired="";
     try{desired=localStorage.getItem(ROUTE_KEY)||"";}catch(error){}
