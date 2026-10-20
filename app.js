@@ -408,6 +408,11 @@
     return { title: "", artist: "" };
   }
 
+  function exactInteractiveTitle(file) {
+    const name = String(file && file.name || "");
+    return name.replace(/\.[^.]+$/, "");
+  }
+
   function titleFromFileName(name) {
     let stem = String(name || "").replace(/\.[^.]+$/, "");
     stem = stem
@@ -708,19 +713,12 @@
         continue;
       }
 
-      const filenameTitle = titleFromFileName(file.name);
+      const filenameTitle = kind === "interactive" ? exactInteractiveTitle(file) : titleFromFileName(file.name);
       const filenameKey = normalizeTitle(filenameTitle);
-      let embeddedTitle = "";
-      if (kind === "interactive") {
-        try {
-          const meta = await readInteractiveMetadata(file);
-          embeddedTitle = String(meta && meta.title || "").trim();
-        } catch (error) {}
-      }
 
       let song = forceSong || null;
       if (!song) {
-        const preferredTitle = embeddedTitle || filenameTitle;
+        const preferredTitle = filenameTitle;
         const preferredKey = normalizeTitle(preferredTitle);
         song = batchAliases.get(filenameKey) ||
           cache.find((s) => normalizeTitle(s.title) === preferredKey || normalizeTitle(s.title) === filenameKey) ||
@@ -737,9 +735,8 @@
             syncPoints: []
           };
           cache.push(song);
-        } else if (kind === "interactive" && embeddedTitle && song.title === filenameTitle) {
-          song.title = embeddedTitle;
         }
+        if (kind === "interactive" && filenameTitle) song.title = filenameTitle;
         if (filenameKey) batchAliases.set(filenameKey, song);
       }
 
@@ -1804,8 +1801,7 @@
     const value=input||{};
     let title=String(value.title||"").trim();
     if(!title && value.interactiveFile){
-      const meta=await readInteractiveMetadata(value.interactiveFile);
-      title=String(meta&&meta.title||"").trim() || titleFromFileName(value.interactiveFile.name);
+      title=exactInteractiveTitle(value.interactiveFile);
     }
     if(!title) throw new Error("Enter a song title.");
 
