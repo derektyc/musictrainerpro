@@ -221,3 +221,28 @@ Regression checks passed:
 - Synced-backing play path starts both the cursor driver and sync timer.
 - Synth mode restores alphaTab volume.
 - index.html references app.js?v=20261020-sync2.
+
+
+## Tick-based synced-backing cursor hotfix — 2026-10-20
+
+Observed from user screen recording:
+- Backing audio was already around 00:19 / 01:04 while the orange cursor remained near the start of bar 1.
+- The cursor driver was active, but the audio-to-score millisecond mapping was scaled incorrectly, causing only a few pixels of movement over several seconds.
+
+Fix:
+- Synced Backing now maps backing-audio time directly to alphaTab playback ticks, not alphaTab milliseconds.
+- Sync points are converted to {audioMs, scoreTick} pairs using alphaTab's playback lookup, including repeat occurrences.
+- Every 50 ms the app seeks alphaTab by tickPosition, which is the underlying musical bar/beat axis used by the cursor.
+- Count-in handling remains intact: before the first audio sync point, the score remains on the first tick.
+- Section-loop seeking now uses the inverse tick-to-audio map.
+
+Runtime-isolated checks passed:
+- With audio 4s → score tick 0 and audio 64s → score tick 7680:
+  - audio 2s stays at tick 0;
+  - audio 4s stays at tick 0;
+  - audio 19s maps to tick 1920;
+  - audio 34s maps to tick 3840;
+  - audio 64s maps to tick 7680.
+- Inverse tick mapping returns audio 19s for tick 1920.
+- All main JavaScript files parse successfully.
+- index.html references app.js?v=20261020-sync3.
