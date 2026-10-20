@@ -134,3 +134,27 @@ Automated/source checks passed:
 - new-page="yes" is treated as a forced system boundary too.
 - app.js and the rest of the main JavaScript bundle parse successfully.
 - index.html references the refreshed app.js cache version.
+
+
+## MuseScore section/model-layout fallback — 2026-10-20
+
+Observed live behavior:
+- The score rendered 3 bars on the first system and continued bar 5 beside bar 4 even though MuseScore visually showed A = bars 1–4 and B = bars 5–8.
+- This indicates the export did not provide a usable hard system break for that layout, so alphaTab remained in automatic wrapping mode.
+
+Fix:
+- MusicXML still uses explicit new-system/new-page markers when present.
+- If no explicit system break exists, rehearsal/section markers are used as musical layout boundaries.
+- The viewer builds alphaTab model-layout counts from those boundaries and switches the MusicXML score to UseModelLayout before the initial render.
+- Example: section A on bar 1 and section B on bar 5 in an 8-bar score becomes systemsLayout [4,4].
+- Remaining measures continue using the first section length as the default model row size.
+- Non-MusicXML scores reset back to Automatic layout.
+- MusicXML detection now also sniffs score XML content instead of relying only on the cached filename extension.
+
+Automated/source checks passed:
+- An 8-bar score with A on bar 1 and B on bar 5 resolves to [4,4].
+- An explicit break before bar 5 also resolves to [4,4].
+- A 12-bar A/B score resolves to [4,4,4].
+- A score with no break or section markers stays in automatic layout.
+- All main JavaScript files parse successfully.
+- index.html points to the refreshed layout2 app.js cache version.
