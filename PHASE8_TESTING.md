@@ -158,3 +158,44 @@ Automated/source checks passed:
 - A score with no break or section markers stays in automatic layout.
 - All main JavaScript files parse successfully.
 - index.html points to the refreshed layout2 app.js cache version.
+
+
+## Backing-track count-in sync + exact interactive-title hotfix — 2026-10-20
+
+Backing sync changes:
+- Auto Sync now estimates a score-start offset instead of assuming bar 1 begins at audio time 0.
+- High-confidence duration matching compares backing-track duration with alphaTab playback duration and snaps plausible gaps to whole score beats.
+- A transient-click analyser provides a fallback/confirmation path for audible count-in clicks near the start of the file.
+- Auto Sync stores bar 1 at the detected audio offset and the final score point at the end of the backing track.
+- The final auto-sync point uses the final playback occurrence of the last master bar, improving repeat-aware scores.
+- External MP3/WAV playback no longer writes raw audio milliseconds directly into alphaTab timePosition.
+- Saved sync points are converted into an audio-time ↔ score-time interpolation map.
+- During a pre-roll/count-in, the score cursor remains at the beginning until the first score sync point is reached.
+- Backing section loops now convert score bar times back to backing-audio times before seeking.
+
+Runtime-isolated checks passed:
+- A 64-second backing track against a 60-second score at 60 BPM detects a 4-beat / 4.000-second offset.
+- Equal score/audio duration produces no count-in offset.
+- Duration and transient-click candidates that agree are combined into a higher-confidence result.
+- With sync points audio 4s → score 0s and audio 64s → score 60s:
+  - audio 2s maps to score 0s;
+  - audio 4s maps to score 0s;
+  - audio 34s maps to score 30s;
+  - audio 64s maps to score 60s;
+  - inverse score mapping returns 4s, 34s and 64s respectively.
+- A repeated playback lookup correctly reports the last occurrence index for the last repeated bar.
+- All main JavaScript files parse successfully after the change.
+
+Interactive title behavior:
+- Auto-created song titles now copy the interactive filename exactly, removing only the final file extension.
+- Case, punctuation, underscores, spaces and parenthetical text are preserved.
+- Add Song uses the same exact filename rule and still permits a manual title override.
+
+Title tests passed:
+- RGP G0 Yellow (bt click) with vocals.musicxml → RGP G0 Yellow (bt click) with vocals
+- Debut_Drum Grooves - Part 1.gp → Debut_Drum Grooves - Part 1
+- My.Song.Name.gpx → My.Song.Name
+
+Live browser check still recommended:
+- Open a real backing track with an audible count-in, run Auto Sync, and confirm the reported offset matches the first musical downbeat.
+- Confirm the cursor waits during the count-in, starts moving on bar 1 at the detected downbeat, follows repeats correctly, and loop seeking remains aligned.
