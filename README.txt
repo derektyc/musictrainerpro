@@ -46,6 +46,9 @@ PHASE 7 FEATURES
 - Searchable cloud catalogue with Interactive / PDF / Backing / Assigned / Incomplete filters.
 - Google Drive is now the teacher Library master; IndexedDB is an on-demand local cache.
 - Add Song, bulk drag-and-drop grouping, asset replacement, previews and Library Health.
+- New interactive-score uploads auto-detect the embedded song title through alphaTab, with MusicXML/filename fallback.
+- The Add Song dialog auto-fills the title when an interactive score is selected, while still allowing a manual override.
+- Bulk uploads use the embedded interactive title while keeping matching PDF/backing-track filenames grouped with the same song.
 - Song details show Drive/cached state for each material.
 - Assigned-song deletion safeguards.
 - Library → Assign integrates directly with the assignment wizard.
