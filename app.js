@@ -92,6 +92,8 @@
   let backingLoopStartMs = 0;
   let backingLoopEndMs = 0;
   let backingSyncMap = [];
+  let backingCursorDriverActive = false;
+  let synthVolumeBeforeBacking = 1;
   let toastTimer = null;
   let pendingMusicXmlSystemBreaks = [];
   let pendingInteractiveIsMusicXml = false;
@@ -1353,6 +1355,7 @@
       applySongSyncPoints(song);
       updateSourceUI();
       syncCursorFromBacking();
+      if (!el.audio.paused) startBackingCursorDriver();
       setStatus("Synced Backing mode ready · " + song.title, "ok");
     } catch (error) {
       backingModeActive = false;
@@ -1362,9 +1365,10 @@
   }
 
   function useSynthMode() {
-    backingModeActive = false;
     stopBackingSyncTimer();
     el.audio.pause();
+    pauseBackingCursorDriver(true);
+    backingModeActive = false;
     backingLoopEnabled = false;
     clearAppliedSyncPoints();
     updateSourceUI();
@@ -1375,6 +1379,35 @@
     if (backingSyncTimer) {
       clearInterval(backingSyncTimer);
       backingSyncTimer = null;
+    }
+  }
+
+  function startBackingCursorDriver() {
+    if (!backingModeActive || !api || !playerReady) return;
+    try {
+      if (!backingCursorDriverActive) {
+        synthVolumeBeforeBacking = Number.isFinite(Number(api.masterVolume))
+          ? Number(api.masterVolume)
+          : 1;
+      }
+      api.masterVolume = 0;
+      const audioMs = (Number(el.audio.currentTime) || 0) * 1000;
+      api.timePosition = scoreTimeFromBackingAudio(audioMs);
+      if (!scorePlaying && typeof api.play === "function") api.play();
+      backingCursorDriverActive = true;
+    } catch (error) {
+      console.warn("Could not start backing cursor driver", error);
+    }
+  }
+
+  function pauseBackingCursorDriver(restoreVolume) {
+    if (!api) return;
+    try {
+      if (scorePlaying && typeof api.pause === "function") api.pause();
+    } catch (error) {}
+    if (restoreVolume) {
+      try { api.masterVolume = synthVolumeBeforeBacking; } catch (error) {}
+      backingCursorDriverActive = false;
     }
   }
 
@@ -1412,7 +1445,10 @@
     if (!backingModeActive || !api || !api.score || activeInteractiveSongId !== selectedSongId) return;
     const audioMs = (Number(el.audio.currentTime) || 0) * 1000;
     const scoreMs = scoreTimeFromBackingAudio(audioMs);
-    try { api.timePosition = scoreMs; } catch (error) {}
+    try {
+      api.timePosition = scoreMs;
+      if (backingModeActive && !el.audio.paused && !backingCursorDriverActive) startBackingCursorDriver();
+    } catch (error) {}
     el.position.textContent = fmt(audioMs) + " / " + fmt((Number(el.audio.duration) || 0) * 1000);
     updateSyncCurrentTime();
     if (backingLoopEnabled && backingLoopEndMs > backingLoopStartMs && audioMs >= backingLoopEndMs - 20) {
@@ -1731,7 +1767,7 @@
   api.playerStateChanged.on((event) => {
     scorePlaying = event.state === alphaTab.synth.PlayerState.Playing;
     if (!backingModeActive) el.play.textContent = scorePlaying ? "Ⅱ" : "▶";
-    if (scorePlaying && !el.audio.paused) el.audio.pause();
+    if (!backingModeActive && scorePlaying && !el.audio.paused) el.audio.pause();
   });
 
   api.playerPositionChanged.on((event) => {
@@ -1997,13 +2033,13 @@
   el.clearSync.onclick = clearSongSyncPoints;
 
   el.audio.addEventListener("play", () => {
-    if (scorePlaying) {
-      try { api.playPause(); } catch (e) {}
-    }
     if (backingModeActive) {
       el.play.textContent = "Ⅱ";
+      startBackingCursorDriver();
       startBackingSyncTimer();
       setStatus("Synced backing playing.", "ok");
+    } else if (scorePlaying) {
+      try { api.pause(); } catch (e) {}
     }
   });
   el.audio.addEventListener("pause", () => {
@@ -2011,6 +2047,7 @@
       el.play.textContent = "▶";
       stopBackingSyncTimer();
       syncCursorFromBacking();
+      pauseBackingCursorDriver(false);
     }
   });
   el.audio.addEventListener("ended", () => {
@@ -2018,6 +2055,7 @@
       el.play.textContent = "▶";
       stopBackingSyncTimer();
       syncCursorFromBacking();
+      pauseBackingCursorDriver(false);
     }
   });
   el.audio.addEventListener("timeupdate", () => {
