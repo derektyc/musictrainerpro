@@ -362,6 +362,52 @@
     return "";
   }
 
+  async function readInteractiveMetadata(file) {
+    if (!file || classifyFile(file) !== "interactive") {
+      return { title: "", artist: "" };
+    }
+
+    try {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      if (alphaTab && alphaTab.importer && alphaTab.importer.ScoreLoader &&
+          typeof alphaTab.importer.ScoreLoader.loadScoreFromBytes === "function") {
+        const score = alphaTab.importer.ScoreLoader.loadScoreFromBytes(bytes, api ? api.settings : undefined);
+        const title = String(score && score.title || "").trim();
+        const artist = String(score && (score.artist || score.albumArtist) || "").trim();
+        if (title) return { title, artist };
+      }
+    } catch (error) {
+      console.warn("Could not read embedded interactive-score metadata with alphaTab", error);
+    }
+
+    // Lightweight MusicXML fallback in case the browser bundle does not expose ScoreLoader.
+    const ext = extension(file.name);
+    if (["musicxml","xml"].includes(ext)) {
+      try {
+        const text = await file.text();
+        const doc = new DOMParser().parseFromString(text, "application/xml");
+        if (!doc.getElementsByTagName("parsererror").length) {
+          const firstText = (names) => {
+            for (const name of names) {
+              const node = doc.getElementsByTagName(name)[0];
+              const value = node ? String(node.textContent || "").trim() : "";
+              if (value) return value;
+            }
+            return "";
+          };
+          return {
+            title: firstText(["movement-title","work-title"]),
+            artist: firstText(["creator"])
+          };
+        }
+      } catch (error) {
+        console.warn("Could not read MusicXML title", error);
+      }
+    }
+
+    return { title: "", artist: "" };
+  }
+
   function titleFromFileName(name) {
     let stem = String(name || "").replace(/\.[^.]+$/, "");
     stem = stem
@@ -650,6 +696,7 @@
     let added = 0;
     let skipped = 0;
     const changed = new Set();
+    const batchAliases = new Map();
 
     let cache = await allSongs();
     const forceSong = forceSongId ? cache.find((s) => s.id === forceSongId) : null;
@@ -661,15 +708,27 @@
         continue;
       }
 
+      const filenameTitle = titleFromFileName(file.name);
+      const filenameKey = normalizeTitle(filenameTitle);
+      let embeddedTitle = "";
+      if (kind === "interactive") {
+        try {
+          const meta = await readInteractiveMetadata(file);
+          embeddedTitle = String(meta && meta.title || "").trim();
+        } catch (error) {}
+      }
+
       let song = forceSong || null;
       if (!song) {
-        const guessedTitle = titleFromFileName(file.name);
-        const key = normalizeTitle(guessedTitle);
-        song = cache.find((s) => normalizeTitle(s.title) === key) || null;
+        const preferredTitle = embeddedTitle || filenameTitle;
+        const preferredKey = normalizeTitle(preferredTitle);
+        song = batchAliases.get(filenameKey) ||
+          cache.find((s) => normalizeTitle(s.title) === preferredKey || normalizeTitle(s.title) === filenameKey) ||
+          null;
         if (!song) {
           song = {
             id: makeId(),
-            title: guessedTitle,
+            title: preferredTitle,
             createdAt: Date.now(),
             updatedAt: Date.now(),
             interactive: null,
@@ -678,7 +737,10 @@
             syncPoints: []
           };
           cache.push(song);
+        } else if (kind === "interactive" && embeddedTitle && song.title === filenameTitle) {
+          song.title = embeddedTitle;
         }
+        if (filenameKey) batchAliases.set(filenameKey, song);
       }
 
       song[kind] = makeAsset(file);
@@ -1740,7 +1802,11 @@
 
   async function createSongWithAssets(input) {
     const value=input||{};
-    const title=String(value.title||"").trim();
+    let title=String(value.title||"").trim();
+    if(!title && value.interactiveFile){
+      const meta=await readInteractiveMetadata(value.interactiveFile);
+      title=String(meta&&meta.title||"").trim() || titleFromFileName(value.interactiveFile.name);
+    }
     if(!title) throw new Error("Enter a song title.");
 
     const song={
@@ -1860,6 +1926,7 @@
     openPdf:openPdfById,
     playAudio:playAudioById,
     stopAudio:stopBackingAudio,
+    readInteractiveMetadata,
     diagnoseMusicXml:(xmlText)=> {
       const result=normalizePercussionMusicXml(xmlText);
       return {
