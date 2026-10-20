@@ -1,4 +1,4 @@
-DT Music Trainer Pro — Phase 7.9
+DT Music Trainer Pro — Phase 8.1
 
 Repository scope
 - This application lives only in derektyc/musictrainerpro.
@@ -77,6 +77,19 @@ PHASE 7 FEATURES
 - Assignment publishing can copy Drive master files into Assigned Materials without first downloading them to the teacher device.
 - Existing ZIP backup/import remains available.
 
+PHASE 8 FEATURES
+8.1 Practice Requirements
+- Teachers can assign a required practice frequency: per day, per week, or a fixed total number of sessions.
+- Requirement count and frequency are stored on each assignment and sync through the existing Firebase assignment document.
+- A practice requirement is credited only when the guided practice engine completes a full session.
+- Completed sessions keep timestamp, practice time, highest speed, repetition count and playback source.
+- Student Home prioritizes assignments whose current practice requirement is not yet met.
+- Student Home shows exactly how many sessions remain for the current day/week/assignment goal.
+- When all current active requirements are met, Today’s Practice shows a completed state instead of immediately pushing another assignment.
+- Assignment cards distinguish an unmet goal from a goal already met for the current period and still allow optional extra practice.
+- Practice Complete reports whether the current requirement was met and how many sessions remain.
+- Advanced Manager exposes the same normalized requirement status for compatibility and future Phase 8 progress features.
+
 STORAGE AND CLOUD ARCHITECTURE
 - Teacher Library master files: Google Drive under DT Music Trainer Pro / Library / [Song].
 - Teacher Library catalogue/index: Firestore song metadata.
@@ -106,7 +119,8 @@ OTHER SUPPORTED MATERIALS
 MuseScore native .mscz files are not opened directly. Export them as MusicXML first.
 
 TESTING
-Automated/source-level regression results and checks that require a real authenticated browser session are tracked in:
-PHASE7_TESTING.md
+Phase 7 regression history remains in PHASE7_TESTING.md.
+Phase 8.1 automated/source checks and live validation items are tracked in:
+PHASE8_TESTING.md
 
 The live-check list is intentionally retained so Firebase, Google Drive, audio playback, real device sizing and student/teacher account behaviour can be verified later without losing track of outstanding tests.
