@@ -930,32 +930,29 @@
     return Math.max(0, count - 1);
   }
 
-  function scoreTimeForSyncPoint(point) {
+  function scoreTickForSyncPoint(point) {
     if (!api || !api.score) return 0;
     try {
       const lookup = playbackLookupForPoint(point);
       if (lookup) {
         const ratio = Math.max(0, Math.min(1, Number(point.barPosition) || 0));
-        const tick = lookup.start + (lookup.end - lookup.start) * ratio;
-        const oldTick = api.tickPosition;
-        api.tickPosition = tick;
-        const time = Number(api.timePosition) || 0;
-        api.tickPosition = oldTick;
-        return Math.max(0, Math.min(Number(api.endTime) || time, time));
+        return Math.max(0, lookup.start + (lookup.end - lookup.start) * ratio);
       }
     } catch (error) {}
 
+    const lookups = api.tickCache && Array.isArray(api.tickCache.masterBars) ? api.tickCache.masterBars : [];
+    if (!lookups.length) return 0;
+    const first = lookups[0], last = lookups[lookups.length - 1];
+    const totalTicks = Math.max(0, Number(last.end) - Number(first.start));
     const bars = api.score.masterBars || [];
-    if (!bars.length) return 0;
-    const scoreEnd = Math.max(0, Number(api.endTime) || 0);
     const absolute = Math.max(0, Math.min(bars.length, Number(point.barIndex) + Number(point.barPosition || 0)));
-    return scoreEnd * (absolute / Math.max(1, bars.length));
+    return Number(first.start) + totalTicks * (absolute / Math.max(1, bars.length));
   }
 
   function rebuildBackingSyncMap(song) {
     backingSyncMap = normalizeSyncPoints(song && song.syncPoints).map((point) => ({
       audioMs: Math.max(0, Number(point.millisecondOffset) || 0),
-      scoreMs: scoreTimeForSyncPoint(point)
+      scoreTick: scoreTickForSyncPoint(point)
     })).sort((a,b) => a.audioMs - b.audioMs);
 
     // Remove duplicate audio positions so interpolation never divides by zero.
@@ -965,50 +962,38 @@
     return backingSyncMap;
   }
 
-  function scoreTimeFromBackingAudio(audioMs) {
+  function scoreTickFromBackingAudio(audioMs) {
     const map = backingSyncMap;
-    const scoreEnd = Math.max(0, Number(api && api.endTime) || 0);
-    if (!map.length) return Math.max(0, Math.min(scoreEnd || audioMs, audioMs));
+    if (!map.length) return Math.max(0, Number(api && api.tickPosition) || 0);
 
-    if (audioMs <= map[0].audioMs) return map[0].scoreMs;
+    if (audioMs <= map[0].audioMs) return map[0].scoreTick;
     for (let i = 0; i < map.length - 1; i++) {
       const a = map[i], b = map[i + 1];
       if (audioMs <= b.audioMs) {
         const span = b.audioMs - a.audioMs;
         const ratio = span > 0 ? (audioMs - a.audioMs) / span : 0;
-        return a.scoreMs + (b.scoreMs - a.scoreMs) * ratio;
+        return a.scoreTick + (b.scoreTick - a.scoreTick) * ratio;
       }
     }
 
-    const last = map[map.length - 1];
-    if (!scoreEnd || last.scoreMs >= scoreEnd - 1) return last.scoreMs;
-
-    const audioEnd = Math.max(last.audioMs, (Number(el.audio.duration) || 0) * 1000);
-    const span = audioEnd - last.audioMs;
-    const ratio = span > 0 ? Math.min(1, Math.max(0, (audioMs - last.audioMs) / span)) : 1;
-    return last.scoreMs + (scoreEnd - last.scoreMs) * ratio;
+    return map[map.length - 1].scoreTick;
   }
 
-  function backingAudioTimeFromScore(scoreMs) {
+  function backingAudioTimeFromScoreTick(scoreTick) {
     const map = backingSyncMap;
-    if (!map.length) return Math.max(0, scoreMs);
+    if (!map.length) return 0;
 
-    if (scoreMs <= map[0].scoreMs) return map[0].audioMs;
+    if (scoreTick <= map[0].scoreTick) return map[0].audioMs;
     for (let i = 0; i < map.length - 1; i++) {
       const a = map[i], b = map[i + 1];
-      if (scoreMs <= b.scoreMs) {
-        const span = b.scoreMs - a.scoreMs;
-        const ratio = span > 0 ? (scoreMs - a.scoreMs) / span : 0;
+      if (scoreTick <= b.scoreTick) {
+        const span = b.scoreTick - a.scoreTick;
+        const ratio = span > 0 ? (scoreTick - a.scoreTick) / span : 0;
         return a.audioMs + (b.audioMs - a.audioMs) * ratio;
       }
     }
 
-    const last = map[map.length - 1];
-    const scoreEnd = Math.max(last.scoreMs, Number(api && api.endTime) || last.scoreMs);
-    const audioEnd = Math.max(last.audioMs, (Number(el.audio.duration) || 0) * 1000);
-    const span = scoreEnd - last.scoreMs;
-    const ratio = span > 0 ? Math.min(1, Math.max(0, (scoreMs - last.scoreMs) / span)) : 1;
-    return last.audioMs + (audioEnd - last.audioMs) * ratio;
+    return map[map.length - 1].audioMs;
   }
 
   function median(values) {
@@ -1392,7 +1377,7 @@
       }
       api.masterVolume = 0;
       const audioMs = (Number(el.audio.currentTime) || 0) * 1000;
-      api.timePosition = scoreTimeFromBackingAudio(audioMs);
+      api.tickPosition = scoreTickFromBackingAudio(audioMs);
       if (!scorePlaying && typeof api.play === "function") api.play();
       backingCursorDriverActive = true;
     } catch (error) {
@@ -1411,30 +1396,30 @@
     }
   }
 
-  function scoreTimeAtBarStart(barIndex) {
+  function scoreTickAtBarStart(barIndex) {
     if (!api || !api.score || !api.score.masterBars || !api.score.masterBars.length) return 0;
     const index = Math.max(0, Math.min(api.score.masterBars.length - 1, barIndex));
     try {
-      const tick = masterBarPlaybackStart(api.score.masterBars[index]);
-      const oldTick = api.tickPosition;
-      api.tickPosition = tick;
-      const time = Number(api.timePosition) || 0;
-      api.tickPosition = oldTick;
-      return time;
+      const lookup = playbackLookupForPoint({barIndex:index,barOccurence:0,barPosition:0});
+      if (lookup) return Math.max(0, Number(lookup.start) || 0);
+      return Math.max(0, Number(masterBarPlaybackStart(api.score.masterBars[index])) || 0);
     } catch (error) {
-      const duration = Number(el.audio.duration) || 0;
-      return duration * 1000 * (index / Math.max(1, api.score.masterBars.length));
+      return 0;
     }
   }
 
   function updateBackingLoopTimes(startBar, endBar) {
     if (!backingModeActive || !api.score) return;
-    const startScoreMs = scoreTimeAtBarStart(startBar - 1);
-    const endScoreMs = endBar < api.score.masterBars.length
-      ? scoreTimeAtBarStart(endBar)
-      : (Number(api.endTime) || 0);
-    backingLoopStartMs = backingAudioTimeFromScore(startScoreMs);
-    backingLoopEndMs = backingAudioTimeFromScore(endScoreMs);
+    const startScoreTick = scoreTickAtBarStart(startBar - 1);
+    const endScoreTick = endBar < api.score.masterBars.length
+      ? scoreTickAtBarStart(endBar)
+      : scoreTickForSyncPoint({
+          barIndex:api.score.masterBars.length-1,
+          barOccurence:finalBarOccurrence(api.score.masterBars.length-1),
+          barPosition:1
+        });
+    backingLoopStartMs = backingAudioTimeFromScoreTick(startScoreTick);
+    backingLoopEndMs = backingAudioTimeFromScoreTick(endScoreTick);
     if (backingLoopEndMs <= backingLoopStartMs) {
       backingLoopStartMs = 0;
       backingLoopEndMs = (Number(el.audio.duration) || 0) * 1000;
@@ -1444,16 +1429,16 @@
   function syncCursorFromBacking() {
     if (!backingModeActive || !api || !api.score || activeInteractiveSongId !== selectedSongId) return;
     const audioMs = (Number(el.audio.currentTime) || 0) * 1000;
-    const scoreMs = scoreTimeFromBackingAudio(audioMs);
+    const scoreTick = scoreTickFromBackingAudio(audioMs);
     try {
-      api.timePosition = scoreMs;
+      api.tickPosition = scoreTick;
       if (backingModeActive && !el.audio.paused && !backingCursorDriverActive) startBackingCursorDriver();
     } catch (error) {}
     el.position.textContent = fmt(audioMs) + " / " + fmt((Number(el.audio.duration) || 0) * 1000);
     updateSyncCurrentTime();
     if (backingLoopEnabled && backingLoopEndMs > backingLoopStartMs && audioMs >= backingLoopEndMs - 20) {
       el.audio.currentTime = backingLoopStartMs / 1000;
-      try { api.timePosition = scoreTimeFromBackingAudio(backingLoopStartMs); } catch (error) {}
+      try { api.tickPosition = scoreTickFromBackingAudio(backingLoopStartMs); } catch (error) {}
     }
   }
 
