@@ -1232,6 +1232,7 @@
   }
 
   function loadSample() {
+    pendingMusicXmlSystemBreaks = [];
     resetTransportState();
     backingModeActive = false;
     backingLoopEnabled = false;
@@ -1248,9 +1249,11 @@
   }
 
   api.scoreLoaded.on((score) => {
-    if (pendingMusicXmlSystemBreaks.length && score && Array.isArray(score.tracks)) {
+    const forcedSystemBreaks = pendingMusicXmlSystemBreaks.slice();
+    pendingMusicXmlSystemBreaks = [];
+    if (forcedSystemBreaks.length && score && Array.isArray(score.tracks)) {
       score.tracks.forEach((track) => {
-        pendingMusicXmlSystemBreaks.forEach((breakIndex) => {
+        forcedSystemBreaks.forEach((breakIndex) => {
           if (typeof track.addLineBreaks === "function") track.addLineBreaks(breakIndex);
           else {
             if (!track.lineBreaks) track.lineBreaks = new Set();
