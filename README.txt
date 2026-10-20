@@ -116,6 +116,8 @@ MusicXML percussion compatibility
 - Unpitched percussion notes with an omitted notehead are treated as the MusicXML default "normal" notehead, restoring visible kick/snare/tom heads while preserving explicit X/cymbal noteheads.
 - The normalization also applies when opening compressed .mxl scores.
 - The original Library file is not rewritten; compatibility is applied only to the bytes passed into the interactive viewer.
+- MuseScore MusicXML forced system/page breaks are preserved as minimum line-break points in alphaTab.
+- Responsive layout remains enabled, so narrow screens may wrap earlier but will not pull a bar across a forced MuseScore break.
 
 OTHER SUPPORTED MATERIALS
 - PDF
