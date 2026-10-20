@@ -46,3 +46,50 @@ Pending live/account/device checks:
 - Confirm a new calendar day resets a daily requirement's current-period progress while retaining historical sessions.
 - Confirm a new Monday resets a weekly requirement's current-period progress while retaining historical sessions.
 - Check Student Home and Assignment cards at desktop, tablet and 360–430px phone widths.
+
+
+## Automated runtime harness — 2026-10-20
+
+Executed against the actual production source loaded from the main branch.
+
+Assignment engine checks passed:
+- 3× per day starts at 0/3 with 3 remaining.
+- First completed guided session becomes 1/3 with 2 remaining.
+- Replaying the same session ID does not double-count it.
+- Second completed session becomes 2/3 with 1 remaining.
+- Third completed session becomes 3/3 with the requirement met.
+- Completed sessions persist practice time, highest speed, repetition count and source.
+- Weekly counting ignores sessions from the previous Monday–Sunday week.
+- Total-session counting includes historical sessions.
+- A 2-session total goal becomes met exactly at 2/2.
+- Daily rollover ignores yesterday's session while retaining it in history.
+
+Modern Phase 8.1 shell checks passed:
+- Daily, weekly and total requirement calculations match the assignment engine.
+- Assignment Wizard frequency labels render correctly for daily, weekly and total goals.
+- Student assignment sorting prioritizes an unmet current requirement ahead of a currently-met recurring goal, while completed assignments remain behind active work.
+
+Practice engine completion check passed:
+- The real Practice engine emits the final rep event and one practice-complete event.
+- Completion carries the same session ID and song ID.
+- Completion payload contains the assignment settings, target speed, total repetitions and elapsed time.
+- completed becomes true and the practice session closes after the target-speed repetition requirement is reached.
+
+Firebase/cloud sync compatibility check passed:
+- Student progress upload writes only progress and updatedAt for the student's own assignment.
+- Practice requirement/settings fields are not written by a student progress upload, matching the Firestore rule that limits student assignment updates to progress and updatedAt.
+
+Repository regression sweep passed:
+- app.js, practice.js, assignments.js, auth.js, song-cloud.js, phase7-shell.js and cloud-sync.js all parse successfully.
+- Every local CSS/JS asset referenced by index.html exists on the main branch.
+- styles.css, practice.css, assignments.css, auth.css and phase7-shell.css all have balanced braces.
+- index.html has no duplicate element IDs.
+
+Result:
+- No Phase 8.1 logic regression was found in the automated/runtime-isolated tests.
+
+Still requires a genuine browser/account environment:
+- Real Firebase Authentication sign-in and Firestore network round-trip between separate teacher/student accounts.
+- Real Google Drive OAuth/material download flow.
+- Visual rendering/touch testing on actual desktop/tablet/phone browsers.
+- A real next-day / next-Monday wall-clock rollover rather than simulated timestamps.
