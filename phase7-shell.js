@@ -714,20 +714,71 @@
       '</div><div id="p76AddError" class="p75-error" hidden></div>'+
       '<div class="p76-add-actions"><button id="p76AddCancel" class="p7-secondary" type="button">Cancel</button><button id="p76AddSave" class="p7-primary" type="button">Save Song</button></div></div>';
     root.appendChild(overlay);
-    setTimeout(()=>{const title=$("p76AddTitle");if(title)title.focus();},0);
+    const titleInput=$("p76AddTitle");
+    const interactiveInput=$("p76AddInteractive");
+    let autoTitle="";
+    let titleLookupToken=0;
+
+    setTimeout(()=>{if(titleInput)titleInput.focus();},0);
+
+    if(titleInput){
+      titleInput.addEventListener("input",()=>{
+        if(String(titleInput.value||"").trim()!==autoTitle) autoTitle="";
+      });
+    }
+
+    if(interactiveInput){
+      interactiveInput.addEventListener("change",async()=>{
+        const file=interactiveInput.files&&interactiveInput.files[0];
+        if(!file) return;
+        const token=++titleLookupToken;
+        const current=String(titleInput&&titleInput.value||"").trim();
+        if(current && current!==autoTitle) return;
+
+        let detected="";
+        try{
+          const api=window.DTMusicTrainerLibrary;
+          if(api&&typeof api.readInteractiveMetadata==="function"){
+            const meta=await api.readInteractiveMetadata(file);
+            detected=String(meta&&meta.title||"").trim();
+          }
+        }catch(error){}
+
+        if(token!==titleLookupToken) return;
+        if(!detected){
+          detected=String(file.name||"")
+            .replace(/\.[^.]+$/,"")
+            .replace(/[_]+/g," ")
+            .replace(/\s{2,}/g," ")
+            .trim();
+        }
+        if(detected&&titleInput){
+          autoTitle=detected;
+          titleInput.value=detected;
+        }
+      });
+    }
+
     const close=()=>overlay.remove();
     $("p76AddClose").onclick=close;
     $("p76AddCancel").onclick=close;
     overlay.addEventListener("click",e=>{if(e.target===overlay)close();});
     $("p76AddSave").onclick=async()=>{
       const api=window.DTMusicTrainerLibrary, errorEl=$("p76AddError"), save=$("p76AddSave");
-      const title=String($("p76AddTitle").value||"").trim();
-      if(!title){errorEl.hidden=false;errorEl.textContent="Enter a song title.";return;}
+      const interactiveFile=$("p76AddInteractive").files[0]||null;
+      let title=String($("p76AddTitle").value||"").trim();
+      if(!title&&interactiveFile&&api&&typeof api.readInteractiveMetadata==="function"){
+        try{
+          const meta=await api.readInteractiveMetadata(interactiveFile);
+          title=String(meta&&meta.title||"").trim();
+        }catch(error){}
+      }
+      if(!title&&!interactiveFile){errorEl.hidden=false;errorEl.textContent="Enter a song title or choose an interactive score.";return;}
       save.disabled=true;save.textContent="Saving…";
       try{
         const song=await api.createSong({
           title,
-          interactiveFile:$("p76AddInteractive").files[0]||null,
+          interactiveFile,
           pdfFile:$("p76AddPdf").files[0]||null,
           audioFile:$("p76AddAudio").files[0]||null
         });
