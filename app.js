@@ -92,6 +92,7 @@
   let backingLoopStartMs = 0;
   let backingLoopEndMs = 0;
   let toastTimer = null;
+  let pendingMusicXmlSystemBreaks = [];
 
   function setStatus(text, tone) {
     el.status.textContent = text;
@@ -114,21 +115,51 @@
     return m ? m[1] : "";
   }
 
+  function musicXmlSystemBreaks(doc) {
+    const breaks = new Set();
+    if (!doc || !doc.documentElement) return [];
+
+    const root = doc.documentElement;
+    const directChildren = (node, name) =>
+      Array.from(node && node.children ? node.children : []).filter((child) => child.localName === name);
+    const hasForcedPrint = (node) =>
+      directChildren(node, "print").some((print) =>
+        String(print.getAttribute("new-system") || "").toLowerCase() === "yes" ||
+        String(print.getAttribute("new-page") || "").toLowerCase() === "yes"
+      );
+
+    if (root.localName === "score-partwise") {
+      directChildren(root, "part").forEach((part) => {
+        directChildren(part, "measure").forEach((measure, index) => {
+          if (index > 0 && hasForcedPrint(measure)) breaks.add(index);
+        });
+      });
+    } else if (root.localName === "score-timewise") {
+      directChildren(root, "measure").forEach((measure, index) => {
+        if (index <= 0) return;
+        if (hasForcedPrint(measure) || directChildren(measure, "part").some(hasForcedPrint)) breaks.add(index);
+      });
+    }
+
+    return Array.from(breaks).sort((a,b) => a-b);
+  }
+
   function normalizePercussionMusicXml(xmlText) {
     const source = String(xmlText || "");
-    if (!source.trim()) return { xml: source, changed: false, restoredNoteheads: 0 };
+    if (!source.trim()) return { xml: source, changed: false, restoredNoteheads: 0, systemBreaks: [] };
 
     let doc;
     try {
       doc = new DOMParser().parseFromString(source, "application/xml");
     } catch (error) {
-      return { xml: source, changed: false, restoredNoteheads: 0 };
+      return { xml: source, changed: false, restoredNoteheads: 0, systemBreaks: [] };
     }
 
     if (!doc || doc.getElementsByTagName("parsererror").length) {
-      return { xml: source, changed: false, restoredNoteheads: 0 };
+      return { xml: source, changed: false, restoredNoteheads: 0, systemBreaks: [] };
     }
 
+    const systemBreaks = musicXmlSystemBreaks(doc);
     let restoredNoteheads = 0;
     const notes = Array.from(doc.getElementsByTagName("note"));
     const insertBeforeNames = new Set(["notehead-text","staff","beam","notations","lyric","play","listen"]);
@@ -154,16 +185,19 @@
       restoredNoteheads++;
     });
 
-    if (!restoredNoteheads) return { xml: source, changed: false, restoredNoteheads: 0 };
+    if (!restoredNoteheads) {
+      return { xml: source, changed: false, restoredNoteheads: 0, systemBreaks };
+    }
 
     try {
       return {
         xml: new XMLSerializer().serializeToString(doc),
         changed: true,
-        restoredNoteheads
+        restoredNoteheads,
+        systemBreaks
       };
     } catch (error) {
-      return { xml: source, changed: false, restoredNoteheads: 0 };
+      return { xml: source, changed: false, restoredNoteheads: 0, systemBreaks };
     }
   }
 
@@ -201,7 +235,7 @@
     const ext = extension(asset.name);
 
     if (!["musicxml","xml","mxl"].includes(ext)) {
-      return { bytes: rawBytes, percussionFixes: 0 };
+      return { bytes: rawBytes, percussionFixes: 0, systemBreaks: [] };
     }
 
     let xmlText = "";
@@ -210,17 +244,20 @@
       else xmlText = new TextDecoder("utf-8").decode(rawBytes);
     } catch (error) {
       console.warn("MusicXML compatibility check could not read the score", error);
-      return { bytes: rawBytes, percussionFixes: 0 };
+      return { bytes: rawBytes, percussionFixes: 0, systemBreaks: [] };
     }
 
-    if (!xmlText) return { bytes: rawBytes, percussionFixes: 0 };
+    if (!xmlText) return { bytes: rawBytes, percussionFixes: 0, systemBreaks: [] };
 
     const normalized = normalizePercussionMusicXml(xmlText);
-    if (!normalized.changed) return { bytes: rawBytes, percussionFixes: 0 };
+    if (!normalized.changed) {
+      return { bytes: rawBytes, percussionFixes: 0, systemBreaks: normalized.systemBreaks || [] };
+    }
 
     return {
       bytes: new TextEncoder().encode(normalized.xml),
-      percussionFixes: normalized.restoredNoteheads
+      percussionFixes: normalized.restoredNoteheads,
+      systemBreaks: normalized.systemBreaks || []
     };
   }
 
@@ -1169,6 +1206,7 @@
 
     try {
       const prepared = await prepareInteractiveForAlphaTab(song.interactive);
+      pendingMusicXmlSystemBreaks = Array.isArray(prepared.systemBreaks) ? prepared.systemBreaks.slice() : [];
       const accepted = api.load(prepared.bytes);
       if (!accepted) {
         throw new Error("alphaTab did not recognise this interactive score. MuseScore .mscz files must be exported as MusicXML first.");
@@ -1210,6 +1248,17 @@
   }
 
   api.scoreLoaded.on((score) => {
+    if (pendingMusicXmlSystemBreaks.length && score && Array.isArray(score.tracks)) {
+      score.tracks.forEach((track) => {
+        pendingMusicXmlSystemBreaks.forEach((breakIndex) => {
+          if (typeof track.addLineBreaks === "function") track.addLineBreaks(breakIndex);
+          else {
+            if (!track.lineBreaks) track.lineBreaks = new Set();
+            track.lineBreaks.add(breakIndex);
+          }
+        });
+      });
+    }
     el.alpha.style.display = "block";
     el.empty.style.display = "none";
     const fallbackSong = activeInteractiveSongId === "__sample__" ? null : songsCache.find((s) => s.id === activeInteractiveSongId);
@@ -1699,7 +1748,11 @@
     stopAudio:stopBackingAudio,
     diagnoseMusicXml:(xmlText)=> {
       const result=normalizePercussionMusicXml(xmlText);
-      return {changed:result.changed,restoredNoteheads:result.restoredNoteheads};
+      return {
+        changed:result.changed,
+        restoredNoteheads:result.restoredNoteheads,
+        systemBreaks:Array.isArray(result.systemBreaks)?result.systemBreaks.slice():[]
+      };
     }
   };
 
