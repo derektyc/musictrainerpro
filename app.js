@@ -93,6 +93,7 @@
   let backingLoopEndMs = 0;
   let toastTimer = null;
   let pendingMusicXmlSystemBreaks = [];
+  let pendingInteractiveIsMusicXml = false;
 
   function setStatus(text, tone) {
     el.status.textContent = text;
@@ -142,6 +143,83 @@
     }
 
     return Array.from(breaks).sort((a,b) => a-b);
+  }
+
+  function musicXmlModelLayout(score, forcedSystemBreaks) {
+    const bars = score && Array.isArray(score.masterBars) ? score.masterBars : [];
+    const total = bars.length;
+    if (!total) return null;
+
+    const explicit = Array.from(new Set((forcedSystemBreaks || [])
+      .map((n) => Math.round(Number(n)))
+      .filter((n) => n > 0 && n < total)))
+      .sort((a,b) => a-b);
+
+    // MuseScore can preserve rehearsal/section markers even when page layout
+    // itself is not exported as a forced MusicXML system break. When there is
+    // no explicit print break, use those musical sections as layout boundaries.
+    const sections = [];
+    bars.forEach((bar,index) => {
+      if (index <= 0) return;
+      const marker = bar && bar.section ? String(bar.section.marker || "").trim() : "";
+      if (marker) sections.push(index);
+    });
+
+    const boundaries = explicit.length ? explicit : Array.from(new Set(sections)).sort((a,b) => a-b);
+    if (!boundaries.length) return null;
+
+    const layout = [];
+    let previous = 0;
+    boundaries.forEach((boundary) => {
+      const count = boundary - previous;
+      if (count > 0) layout.push(count);
+      previous = boundary;
+    });
+
+    const base = Math.max(1, layout[0] || 4);
+    let remaining = total - previous;
+    while (remaining > 0) {
+      const count = Math.min(base, remaining);
+      layout.push(count);
+      remaining -= count;
+    }
+
+    return {
+      layout,
+      defaultBars: base,
+      source: explicit.length ? "musicxml-breaks" : "section-markers"
+    };
+  }
+
+  function applyMusicXmlModelLayout(score, forcedSystemBreaks) {
+    const model = musicXmlModelLayout(score, forcedSystemBreaks);
+    if (!model) {
+      if (api && api.settings && api.settings.display) {
+        api.settings.display.systemsLayoutMode = alphaTab.SystemsLayoutMode
+          ? alphaTab.SystemsLayoutMode.Automatic
+          : 0;
+      }
+      return null;
+    }
+
+    const layout = model.layout.slice();
+    score.systemsLayout = layout.slice();
+    score.defaultSystemsLayout = model.defaultBars;
+
+    if (Array.isArray(score.tracks)) {
+      score.tracks.forEach((track) => {
+        track.systemsLayout = layout.slice();
+        track.defaultSystemsLayout = model.defaultBars;
+      });
+    }
+
+    if (api && api.settings && api.settings.display) {
+      api.settings.display.systemsLayoutMode = alphaTab.SystemsLayoutMode
+        ? alphaTab.SystemsLayoutMode.UseModelLayout
+        : 1;
+    }
+
+    return model;
   }
 
   function normalizePercussionMusicXml(xmlText) {
@@ -234,8 +312,17 @@
     const rawBytes = new Uint8Array(rawBuffer);
     const ext = extension(asset.name);
 
-    if (!["musicxml","xml","mxl"].includes(ext)) {
-      return { bytes: rawBytes, percussionFixes: 0, systemBreaks: [] };
+    let looksLikeXml = false;
+    if (ext !== "mxl") {
+      try {
+        const prefix = new TextDecoder("utf-8").decode(rawBytes.slice(0, Math.min(rawBytes.length, 512)));
+        looksLikeXml = /<\s*score-(?:partwise|timewise)\b/i.test(prefix) ||
+          /<\?xml[\s\S]*?<\s*score-/i.test(prefix);
+      } catch (error) {}
+    }
+
+    if (!["musicxml","xml","mxl"].includes(ext) && !looksLikeXml) {
+      return { bytes: rawBytes, percussionFixes: 0, systemBreaks: [], isMusicXml: false };
     }
 
     let xmlText = "";
@@ -244,20 +331,26 @@
       else xmlText = new TextDecoder("utf-8").decode(rawBytes);
     } catch (error) {
       console.warn("MusicXML compatibility check could not read the score", error);
-      return { bytes: rawBytes, percussionFixes: 0, systemBreaks: [] };
+      return { bytes: rawBytes, percussionFixes: 0, systemBreaks: [], isMusicXml: true };
     }
 
-    if (!xmlText) return { bytes: rawBytes, percussionFixes: 0, systemBreaks: [] };
+    if (!xmlText) return { bytes: rawBytes, percussionFixes: 0, systemBreaks: [], isMusicXml: true };
 
     const normalized = normalizePercussionMusicXml(xmlText);
     if (!normalized.changed) {
-      return { bytes: rawBytes, percussionFixes: 0, systemBreaks: normalized.systemBreaks || [] };
+      return {
+        bytes: rawBytes,
+        percussionFixes: 0,
+        systemBreaks: normalized.systemBreaks || [],
+        isMusicXml: true
+      };
     }
 
     return {
       bytes: new TextEncoder().encode(normalized.xml),
       percussionFixes: normalized.restoredNoteheads,
-      systemBreaks: normalized.systemBreaks || []
+      systemBreaks: normalized.systemBreaks || [],
+      isMusicXml: true
     };
   }
 
@@ -1206,6 +1299,7 @@
 
     try {
       const prepared = await prepareInteractiveForAlphaTab(song.interactive);
+      pendingInteractiveIsMusicXml = !!prepared.isMusicXml;
       pendingMusicXmlSystemBreaks = Array.isArray(prepared.systemBreaks) ? prepared.systemBreaks.slice() : [];
       const accepted = api.load(prepared.bytes);
       if (!accepted) {
@@ -1232,7 +1326,13 @@
   }
 
   function loadSample() {
+    pendingInteractiveIsMusicXml = false;
     pendingMusicXmlSystemBreaks = [];
+    if (api && api.settings && api.settings.display) {
+      api.settings.display.systemsLayoutMode = alphaTab.SystemsLayoutMode
+        ? alphaTab.SystemsLayoutMode.Automatic
+        : 0;
+    }
     resetTransportState();
     backingModeActive = false;
     backingLoopEnabled = false;
@@ -1249,7 +1349,9 @@
   }
 
   api.scoreLoaded.on((score) => {
+    const isMusicXml = pendingInteractiveIsMusicXml;
     const forcedSystemBreaks = pendingMusicXmlSystemBreaks.slice();
+    pendingInteractiveIsMusicXml = false;
     pendingMusicXmlSystemBreaks = [];
     if (forcedSystemBreaks.length && score && Array.isArray(score.tracks)) {
       score.tracks.forEach((track) => {
@@ -1262,6 +1364,14 @@
         });
       });
     }
+
+    const appliedLayout = isMusicXml ? applyMusicXmlModelLayout(score, forcedSystemBreaks) : null;
+    if (!isMusicXml && api && api.settings && api.settings.display) {
+      api.settings.display.systemsLayoutMode = alphaTab.SystemsLayoutMode
+        ? alphaTab.SystemsLayoutMode.Automatic
+        : 0;
+    }
+
     el.alpha.style.display = "block";
     el.empty.style.display = "none";
     const fallbackSong = activeInteractiveSongId === "__sample__" ? null : songsCache.find((s) => s.id === activeInteractiveSongId);
@@ -1271,7 +1381,8 @@
     const trackCount = score.tracks ? score.tracks.length : 0;
     const barCount = score.masterBars ? score.masterBars.length : 0;
     el.songMeta.textContent = trackCount + " track" + (trackCount === 1 ? "" : "s") +
-      " · " + barCount + " bar" + (barCount === 1 ? "" : "s");
+      " · " + barCount + " bar" + (barCount === 1 ? "" : "s") +
+      (appliedLayout ? " · Score layout " + appliedLayout.layout.join("+") : "");
 
     el.loopStart.max = String(Math.max(1, barCount));
     el.loopEnd.max = String(Math.max(1, barCount));
@@ -1756,7 +1867,8 @@
         restoredNoteheads:result.restoredNoteheads,
         systemBreaks:Array.isArray(result.systemBreaks)?result.systemBreaks.slice():[]
       };
-    }
+    },
+    diagnoseModelLayout:(score,breaks)=>musicXmlModelLayout(score,breaks||[])
   };
 
   async function init() {
