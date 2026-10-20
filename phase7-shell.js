@@ -735,23 +735,8 @@
         const current=String(titleInput&&titleInput.value||"").trim();
         if(current && current!==autoTitle) return;
 
-        let detected="";
-        try{
-          const api=window.DTMusicTrainerLibrary;
-          if(api&&typeof api.readInteractiveMetadata==="function"){
-            const meta=await api.readInteractiveMetadata(file);
-            detected=String(meta&&meta.title||"").trim();
-          }
-        }catch(error){}
-
+        const detected=String(file.name||"").replace(/\.[^.]+$/,"");
         if(token!==titleLookupToken) return;
-        if(!detected){
-          detected=String(file.name||"")
-            .replace(/\.[^.]+$/,"")
-            .replace(/[_]+/g," ")
-            .replace(/\s{2,}/g," ")
-            .trim();
-        }
         if(detected&&titleInput){
           autoTitle=detected;
           titleInput.value=detected;
@@ -767,11 +752,8 @@
       const api=window.DTMusicTrainerLibrary, errorEl=$("p76AddError"), save=$("p76AddSave");
       const interactiveFile=$("p76AddInteractive").files[0]||null;
       let title=String($("p76AddTitle").value||"").trim();
-      if(!title&&interactiveFile&&api&&typeof api.readInteractiveMetadata==="function"){
-        try{
-          const meta=await api.readInteractiveMetadata(interactiveFile);
-          title=String(meta&&meta.title||"").trim();
-        }catch(error){}
+      if(!title&&interactiveFile){
+        title=String(interactiveFile.name||"").replace(/\.[^.]+$/,"");
       }
       if(!title&&!interactiveFile){errorEl.hidden=false;errorEl.textContent="Enter a song title or choose an interactive score.";return;}
       save.disabled=true;save.textContent="Saving…";
