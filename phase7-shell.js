@@ -1494,7 +1494,20 @@
     }else{
       done=sessions.length;
     }
-    return {count,period,done,met:done>=count,label};
+    const remaining=Math.max(0,count-done);
+    return {
+      count,
+      period,
+      done,
+      remaining,
+      met:remaining===0,
+      label,
+      frequency:period==="day" ? count+"× per day" : period==="week" ? count+"× per week" : count+" session"+(count===1?"":"s")+" total"
+    };
+  }
+
+  function currentRequirementMet(a){
+    return requirementProgress(a).met;
   }
 
   function dueLabel(a){
@@ -1512,6 +1525,11 @@
     return list.slice().sort((a,b)=>{
       const ac=isCompleted(a)?1:0, bc=isCompleted(b)?1:0;
       if(ac!==bc) return ac-bc;
+      if(!ac){
+        const ar=requirementProgress(a), br=requirementProgress(b);
+        const am=ar.met?1:0, bm=br.met?1:0;
+        if(am!==bm) return am-bm;
+      }
       const ad=a.dueDate||"9999-12-31", bd=b.dueDate||"9999-12-31";
       return ad.localeCompare(bd) || String(b.createdAt||"").localeCompare(String(a.createdAt||""));
     });
@@ -1554,33 +1572,39 @@
   function renderStudentHome(){
     const list=studentAssignmentSort(studentAssignmentList());
     const active=list.filter(a=>!isCompleted(a));
-    const next=active[0]||null;
-    const todayDone=list.filter(practicedToday).length;
+    const pending=active.filter(a=>!currentRequirementMet(a));
+    const next=pending[0]||null;
+    const goalsMet=active.filter(currentRequirementMet).length;
     const totalMs=list.reduce((n,a)=>n+Number(a.progress&&a.progress.practiceMs||0),0);
     const best=list.reduce((n,a)=>Math.max(n,Number(a.progress&&a.progress.highestSpeed||0)),0);
     const streak=practiceStreak();
 
     let today='<div class="p7-student-empty"><div class="p7-student-empty-icon">✓</div><strong>You are all caught up</strong><span>No active assignments right now.</span></div>';
-    if(next){
+    if(active.length&&!next){
+      today='<div class="p7-student-empty p81-current-goals-met"><div class="p7-student-empty-icon">✓</div><strong>Today\'s practice is complete</strong><span>All current practice requirements are met. You can still practise again if you want.</span></div>';
+    }else if(next){
       const s=next.settings||{};
       const req=requirementProgress(next);
       const due=dueLabel(next);
+      const remainingText=req.remaining===1?"1 session remaining":req.remaining+" sessions remaining";
       today='<div class="p7-today-card">'+
-        '<div class="p7-today-top"><div><div class="p7-today-kicker">NEXT UP</div><div class="p7-today-title">'+escapeHtml(next.songTitle||"Practice assignment")+'</div></div>'+
+        '<div class="p7-today-top"><div><div class="p7-today-kicker">NEXT UP · '+escapeHtml(remainingText.toUpperCase())+'</div><div class="p7-today-title">'+escapeHtml(next.songTitle||"Practice assignment")+'</div></div>'+
         (due?'<span class="p7-due '+(due==="Overdue"?"overdue":"")+'">'+escapeHtml(due)+'</span>':'')+'</div>'+
         '<div class="p7-assignment-specs">'+
           '<span><b>Bars</b> '+(s.startBar||1)+'–'+(s.endBar||1)+'</span>'+
           '<span><b>Speed</b> '+(s.startSpeed||100)+'% → '+(s.targetSpeed||100)+'%</span>'+
           '<span><b>'+escapeHtml(req.label)+'</b> '+Math.min(req.done,req.count)+' / '+req.count+'</span>'+
         '</div>'+
+        '<div class="p81-requirement-copy"><strong>'+escapeHtml(req.frequency)+'</strong><span>'+escapeHtml(remainingText)+'</span></div>'+
         (next.note?'<div class="p7-today-note"><strong>From your teacher</strong><br>'+escapeHtml(next.note)+'</div>':'')+
         '<button class="p7-big-action" data-student-start="'+escapeHtml(next.id)+'" type="button">▶ Start Practice</button></div>';
     }
 
-    const upcoming=active.slice(1,4).map(a=>{
+    const upcoming=active.filter(a=>!next||a.id!==next.id).slice(0,4).map(a=>{
       const s=a.settings||{}, due=dueLabel(a), req=requirementProgress(a);
-      return '<button class="p7-student-assignment-row" data-student-start="'+escapeHtml(a.id)+'" type="button">'+
-        '<div><strong>'+escapeHtml(a.songTitle||"Assignment")+'</strong><span>Bars '+(s.startBar||1)+'–'+(s.endBar||1)+' · '+Math.min(req.done,req.count)+'/'+req.count+' '+req.label.toLowerCase()+'</span></div>'+
+      const goalText=req.met ? req.label+" goal met ✓" : req.remaining+" remaining · "+req.label.toLowerCase();
+      return '<button class="p7-student-assignment-row '+(req.met?"p81-goal-met":"")+'" data-student-start="'+escapeHtml(a.id)+'" type="button">'+
+        '<div><strong>'+escapeHtml(a.songTitle||"Assignment")+'</strong><span>Bars '+(s.startBar||1)+'–'+(s.endBar||1)+' · '+escapeHtml(goalText)+'</span></div>'+
         '<div class="p7-student-row-side">'+(due?'<span>'+escapeHtml(due)+'</span>':'')+'<b>›</b></div></button>';
     }).join("");
 
@@ -1589,11 +1613,11 @@
       '<div class="p7-streak-pill">🔥 <strong>'+streak+'</strong><span>day streak</span></div></div>'+
       '<div class="p7-student-home-grid"><div><div class="p7-section-label">Today\'s practice</div>'+today+'</div>'+
       '<div class="p7-student-side-card"><div class="p7-card-title">Your progress</div>'+
-        '<div class="p7-student-stat"><strong>'+todayDone+'</strong><span>practised today</span></div>'+
+        '<div class="p7-student-stat"><strong>'+goalsMet+' / '+active.length+'</strong><span>current goals met</span></div>'+
         '<div class="p7-student-stat"><strong>'+fmtMinutes(totalMs)+'</strong><span>total practice time</span></div>'+
         '<div class="p7-student-stat"><strong>'+(best?best+"%":"—")+'</strong><span>highest speed</span></div>'+
         '<button id="p7ViewProgress" class="p7-secondary p7-full-button" type="button">View my progress</button></div></div>'+
-      '<div class="p7-home-upcoming"><div class="p7-section-heading"><div><div class="p7-section-label">Coming up</div><strong>More assignments</strong></div><button id="p7ViewAllAssignments" type="button">View all</button></div>'+
+      '<div class="p7-home-upcoming"><div class="p7-section-heading"><div><div class="p7-section-label">Assignments</div><strong>More practice</strong></div><button id="p7ViewAllAssignments" type="button">View all</button></div>'+
       (upcoming||'<div class="p7-student-empty compact"><span>No other active assignments.</span></div>')+'</div>';
 
     $("p7PageHome").querySelectorAll("[data-student-start]").forEach(b=>b.onclick=()=>startStudentAssignment(b.dataset.studentStart));
@@ -1705,8 +1729,8 @@
           '<span><b>Target</b> '+(s.targetSpeed||100)+'%</span>'+
           '<span><b>Best</b> '+(Number(p.highestSpeed)||0)+'%</span></div>'+
         (a.note?'<div class="p7-today-note"><strong>Teacher note</strong><br>'+escapeHtml(a.note)+'</div>':'')+
-        '<div class="p7-goal-row"><div><strong>'+escapeHtml(req.label)+' '+Math.min(req.done,req.count)+' / '+req.count+'</strong><span>Practice goal</span></div><div class="p7-goal-track"><i style="width:'+pct+'%"></i></div></div>'+
-        '<button class="p7-big-action" data-student-start="'+escapeHtml(a.id)+'" type="button">▶ Practice Assignment</button></article>';
+        '<div class="p7-goal-row '+(req.met?"p81-goal-done":"")+'"><div><strong>'+escapeHtml(req.label)+' '+Math.min(req.done,req.count)+' / '+req.count+(req.met?" ✓":"")+'</strong><span>'+escapeHtml(req.frequency)+(req.met?" · Goal met":" · "+req.remaining+" remaining")+'</span></div><div class="p7-goal-track"><i style="width:'+pct+'%"></i></div></div>'+
+        '<button class="p7-big-action" data-student-start="'+escapeHtml(a.id)+'" type="button">'+(req.met?'↻ Practice Again':'▶ Practice Assignment')+'</button></article>';
     }).join("");
 
     const history=completed.slice(0,8).map(a=>{
@@ -1997,14 +2021,14 @@
       '<div class="p7-completion-check">✓</div>'+
       '<div class="p7-eyebrow">Practice complete</div>'+
       '<h2>'+escapeHtml((a&&a.songTitle)||"Great work")+'</h2>'+
-      '<p>You finished this practice session.</p>'+
+      '<p>'+(req&&req.met?'Requirement met — nice work.':req?'Session saved. '+req.remaining+' more '+(req.remaining===1?'session':'sessions')+' to meet this '+(req.period==="day"?'day':req.period==="week"?'week':'assignment')+' goal.':'You finished this practice session.')+'</p>'+
       '<div class="p7-completion-stats">'+
         '<div><strong>'+Math.round(Number(detail.currentSpeed)||0)+'%</strong><span>Highest speed</span></div>'+
         '<div><strong>'+Math.max(0,Number(detail.totalReps)||0)+'</strong><span>Repetitions</span></div>'+
         '<div><strong>'+fmtMinutes(detail.elapsedMs||0)+'</strong><span>Practice time</span></div>'+
       '</div>'+
       (req?'<div class="p7-completion-goal '+(req.met?"done":"")+'"><span>'+escapeHtml(req.label)+' goal</span><strong>'+Math.min(req.done,req.count)+' / '+req.count+(req.met?" ✓":"")+'</strong></div>':'')+
-      '<div class="p7-completion-actions"><button id="p7CompletionDone" class="p7-primary" type="button">Done</button><button id="p7CompletionAgain" class="p7-secondary" type="button">Practice Again</button></div>'+
+      '<div class="p7-completion-actions"><button id="p7CompletionDone" class="p7-primary" type="button">'+(req&&req.met?'Done for Now':'Done')+'</button><button id="p7CompletionAgain" class="p7-secondary" type="button">Practice Again</button></div>'+
       '</div>';
     document.body.appendChild(overlay);
     setTimeout(()=>{const done=$("p7CompletionDone");if(done)done.focus();},0);
