@@ -1028,6 +1028,14 @@
     }
   });
 
+  // alphaTab intentionally draws voices after voice 1 with a translucent
+  // secondary color. Drum notation commonly uses voice 1 for cymbals and voice 2
+  // for kick/snare, so that default makes the lower kit notes look disabled.
+  // Use the primary notation color for every voice to match normal drum-score engraving.
+  if (api.settings && api.settings.display && api.settings.display.resources) {
+    api.settings.display.resources.secondaryGlyphColor = api.settings.display.resources.mainGlyphColor;
+  }
+
   window.dtMusicTrainerProAlphaTab = api;
 
   function renderTrackButtons(score) {
