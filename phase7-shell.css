@@ -266,6 +266,17 @@ body.role-student #p7PageProgress{max-width:1180px;margin:0 auto}
 .p7-assignment-specs span b{color:#f1eee8;margin-right:3px}
 .p7-assignment-specs.large{margin:13px 0 4px}
 .p7-assignment-specs.large span{background:#252526;border-color:#3c3c3e}
+.p81-requirement-copy{
+  margin-top:12px;display:flex;align-items:center;justify-content:space-between;gap:10px;
+  border:1px solid #4b4236;background:#242321;border-radius:11px;padding:9px 11px
+}
+.p81-requirement-copy strong{font-size:12px;color:#f2eee7}
+.p81-requirement-copy span{font-size:11px;color:#b9a98f}
+.p81-current-goals-met{border-style:solid;border-color:#365443;background:rgba(54,84,67,.14)}
+.p7-student-assignment-row.p81-goal-met{opacity:.72}
+.p7-student-assignment-row.p81-goal-met strong{color:#d3e9d9}
+.p7-goal-row.p81-goal-done .p7-goal-track i{background:var(--p7-ok)}
+.p7-goal-row.p81-goal-done>div:first-child strong{color:#cce7d4}
 .p7-big-action{transition:transform .12s ease,filter .12s ease}
 .p7-big-action:hover{filter:brightness(1.05);transform:translateY(-1px)}
 .p7-big-action:active{transform:translateY(0)}
