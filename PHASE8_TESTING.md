@@ -199,3 +199,25 @@ Title tests passed:
 Live browser check still recommended:
 - Open a real backing track with an audible count-in, run Auto Sync, and confirm the reported offset matches the first musical downbeat.
 - Confirm the cursor waits during the count-in, starts moving on bar 1 at the detected downbeat, follows repeats correctly, and loop seeking remains aligned.
+
+
+## Synced-backing cursor-driver hotfix — 2026-10-20
+
+Observed issue:
+- MP3/WAV playback worked in Synced Backing mode but the alphaTab cursor stayed still.
+- alphaTab only emits cursor-position updates while its own main player is in Playing state; seeking timePosition while the synth is stopped does not drive the rendered cursor.
+
+Fix:
+- Synced Backing now starts alphaTab's player as a muted cursor driver.
+- alphaTab master volume is forced to 0 while the backing track is the audible source.
+- The existing audio-to-score sync map continues to seek alphaTab every 50 ms.
+- The player-state handler no longer pauses the MP3 when alphaTab is playing specifically for Synced Backing.
+- Pausing/ending the MP3 pauses the muted cursor driver.
+- Switching back to Synth restores the previous alphaTab master volume.
+
+Regression checks passed:
+- app.js parses successfully.
+- All main JavaScript files parse successfully.
+- Synced-backing play path starts both the cursor driver and sync timer.
+- Synth mode restores alphaTab volume.
+- index.html references app.js?v=20261020-sync2.
