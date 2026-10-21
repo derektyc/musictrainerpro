@@ -96,6 +96,8 @@
   let backingSyncMap = [];
   let backingCursorDriverActive = false;
   let backingPreRollFrozen = false;
+  let backingTracksMuted = false;
+  let playedNoteHighlighting = false;
   let synthVolumeBeforeBacking = 1;
   let naturalScoreEndMs = 0;
   let lookAheadScrollRaf = 0;
@@ -1564,13 +1566,47 @@
     setStatus("Sync points cleared.", "ok");
   }
 
+  function setBackingTracksMuted(mute) {
+    if (!api) return false;
+    const tracks=(api.tracks&&api.tracks.length?api.tracks:(api.score&&api.score.tracks)||[]);
+    if (!tracks.length || typeof api.changeTrackMute !== "function") return false;
+    try {
+      api.changeTrackMute(tracks,!!mute);
+      backingTracksMuted=!!mute;
+      return true;
+    } catch (error) {
+      console.warn("Could not change synth track mute state",error);
+      return false;
+    }
+  }
+
+  function setPlayedNoteHighlighting(enabled) {
+    playedNoteHighlighting=!!enabled;
+    try {
+      if(api&&api.settings&&api.settings.player){
+        api.settings.player.enableElementHighlighting=playedNoteHighlighting;
+        if(typeof api.updateSettings==="function") api.updateSettings();
+      }
+    } catch(error){
+      console.warn("Could not update played-note highlighting",error);
+    }
+    window.dispatchEvent(new CustomEvent("dtmtp:practice-display-changed",{
+      detail:{playedNoteHighlighting}
+    }));
+  }
+
+  function togglePlayedNoteHighlighting() {
+    setPlayedNoteHighlighting(!playedNoteHighlighting);
+    return playedNoteHighlighting;
+  }
+
   function updateSourceUI() {
     el.synthMode.classList.toggle("active-source", !backingModeActive);
     el.backingMode.classList.toggle("active-source", backingModeActive);
     if (backingModeActive) {
       el.audioModeNote.textContent = "Synced Backing mode: the real MP3/WAV drives the notation cursor.";
       el.countIn.disabled = true;
-      el.metro.disabled = true;
+      el.metro.disabled = !playerReady;
       el.speed.disabled = !playerReady;
     } else {
       el.audioModeNote.textContent = "Synth mode. Switch to Synced Backing after creating sync points.";
@@ -1652,7 +1688,10 @@
         if (Number.isFinite(currentVolume) && currentVolume > 0) synthVolumeBeforeBacking = currentVolume;
       }
       pauseBackingCursorDriver(false);
-      try { api.masterVolume = 0; } catch (error) {}
+      const tracksMuted=setBackingTracksMuted(true);
+      if(!tracksMuted){
+        try { api.masterVolume = 0; } catch (error) {}
+      }
       try { api.tickPosition = backingSyncMap[0].scoreTick; } catch (error) {}
       backingPreRollFrozen = true;
     }
@@ -1665,7 +1704,8 @@
         const currentVolume = Number(api.masterVolume);
         if (Number.isFinite(currentVolume) && currentVolume > 0) synthVolumeBeforeBacking = currentVolume;
       }
-      api.masterVolume = 0;
+      const tracksMuted=setBackingTracksMuted(true);
+      if(!tracksMuted) api.masterVolume = 0;
       const audioMs = (Number(el.audio.currentTime) || 0) * 1000;
       if (backingIsInPreRoll(audioMs)) {
         freezeBackingCursorAtStart();
@@ -1687,6 +1727,7 @@
     } catch (error) {}
     backingCursorDriverActive = false;
     if (restoreVolume) {
+      if(backingTracksMuted) setBackingTracksMuted(false);
       const restore = Number.isFinite(Number(synthVolumeBeforeBacking)) && Number(synthVolumeBeforeBacking) > 0
         ? Number(synthVolumeBeforeBacking)
         : 1;
@@ -1857,7 +1898,8 @@
       enableUserInteraction: true,
       enableCursor: true,
       enableAnimatedBeatCursor: true,
-      enableElementHighlighting: true,
+      enableElementHighlighting: false,
+      enablePlaybackRangeSelection: true,
       soundFont: ALPHATAB_BASE + "soundfont/sonivox.sf2",
       scrollElement: el.viewport,
       scrollMode: "off",
@@ -2414,9 +2456,11 @@
     api.countInVolume = el.countIn.classList.contains("active") ? 1 : 0;
   };
   el.metro.onclick = () => {
-    if (backingModeActive) return;
     el.metro.classList.toggle("active");
     api.metronomeVolume = el.metro.classList.contains("active") ? 1 : 0;
+    window.dispatchEvent(new CustomEvent("dtmtp:practice-display-changed",{
+      detail:{metronome:el.metro.classList.contains("active")}
+    }));
   };
   el.loop.onclick = () => {
     if (backingModeActive) {
@@ -2676,6 +2720,9 @@
     openPdf:openPdfById,
     playAudio:playAudioById,
     selectAudioVersion,
+    setPlayedNoteHighlighting,
+    togglePlayedNoteHighlighting,
+    getPlayedNoteHighlighting:()=>playedNoteHighlighting,
     stopAudio:stopBackingAudio,
     readInteractiveMetadata,
     diagnoseMusicXml:(xmlText)=> {
