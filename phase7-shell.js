@@ -20,6 +20,7 @@
   let librarySearchTimer = null;
   let practiceChromeObserver = null;
   let practiceToolsOpen = false;
+  let backingPositionBound = false;
 
   const routes = {
     teacher:[
@@ -56,6 +57,11 @@
   function fmtMinutes(ms){
     const m=Math.round((Number(ms)||0)/60000);
     return m<60 ? m+"m" : Math.floor(m/60)+"h "+(m%60)+"m";
+  }
+
+  function fmtClock(ms){
+    const total=Math.max(0,Math.floor((Number(ms)||0)/1000));
+    return String(Math.floor(total/60)).padStart(2,"0")+":"+String(total%60).padStart(2,"0");
   }
 
   function assignmentStatus(a){
@@ -1996,6 +2002,21 @@
     ["dtmtp:practice-start","dtmtp:practice-rep","dtmtp:practice-speed-change","dtmtp:practice-restart-step","dtmtp:practice-stop","dtmtp:practice-complete","dtmtp:materials-ready"].forEach(name=>{
       window.addEventListener(name,()=>setTimeout(syncPracticeChrome,0));
     });
+
+    if(!backingPositionBound){
+      backingPositionBound=true;
+      window.addEventListener("dtmtp:backing-position",(event)=>{
+        const d=event&&event.detail||{};
+        const pos=$("p77Position");
+        if(pos){
+          pos.textContent=fmtClock(d.audioMs)+" / "+fmtClock(d.durationMs);
+          pos.dataset.audioMs=String(Math.round(Number(d.audioMs)||0));
+          pos.dataset.scoreTick=String(Math.round(Number(d.scoreTick)||0));
+          pos.dataset.actualTick=String(Math.round(Number(d.actualTick)||0));
+        }
+      });
+    }
+
     setTimeout(syncPracticeChrome,0);
   }
 
