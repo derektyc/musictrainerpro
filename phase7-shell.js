@@ -1924,7 +1924,7 @@
     const hasLoopRange=!!(window.dtMusicTrainerProAlphaTab&&window.dtMusicTrainerProAlphaTab.playbackRange);
     if(loop){
       loop.disabled=active||!oldLoop||oldLoop.disabled;
-      loop.classList.toggle("active",practiceLoopSelectMode||hasLoopRange||!!(oldLoop&&oldLoop.classList.contains("active")));
+      loop.classList.toggle("active",practiceLoopSelectMode||!!(oldLoop&&oldLoop.classList.contains("active")));
       const label=loop.querySelector("span");
       if(label) label.textContent=practiceLoopSelectMode?"Select":"Loop";
     }
