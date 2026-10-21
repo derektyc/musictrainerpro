@@ -1511,15 +1511,24 @@
   }
 
   function syncCursorFromBacking() {
-    if (!backingModeActive || !api || !api.score || activeInteractiveSongId !== selectedSongId) return;
-    const audioMs = (Number(el.audio.currentTime) || 0) * 1000;
-    const scoreTick = scoreTickFromBackingAudio(audioMs);
-    try {
-      api.tickPosition = scoreTick;
-      if (backingModeActive && !el.audio.paused && !backingCursorDriverActive) startBackingCursorDriver();
-    } catch (error) {}
-    el.position.textContent = fmt(audioMs) + " / " + fmt((Number(el.audio.duration) || 0) * 1000);
+    if (!backingModeActive || !api || !api.score) return;
+
+    const audioMs = Math.max(0,(Number(el.audio.currentTime) || 0) * 1000);
+    const durationMs = Math.max(0,(Number(el.audio.duration) || 0) * 1000);
+
+    // Keep the user-facing clock alive even if score mapping fails. This also
+    // gives the Phase 7/8 shell a reliable DOM mutation to mirror.
+    el.position.textContent = fmt(audioMs) + " / " + fmt(durationMs);
     updateSyncCurrentTime();
+
+    try {
+      const scoreTick = scoreTickFromBackingAudio(audioMs);
+      if (Number.isFinite(scoreTick)) api.tickPosition = scoreTick;
+      if (!el.audio.paused && !backingCursorDriverActive) startBackingCursorDriver();
+    } catch (error) {
+      console.warn("Backing cursor update failed",error);
+    }
+
     if (backingLoopEnabled && backingLoopEndMs > backingLoopStartMs && audioMs >= backingLoopEndMs - 20) {
       el.audio.currentTime = backingLoopStartMs / 1000;
       try { api.tickPosition = scoreTickFromBackingAudio(backingLoopStartMs); } catch (error) {}
@@ -2112,6 +2121,16 @@
     } else if (scorePlaying) {
       try { api.pause(); } catch (e) {}
     }
+  });
+
+  // Native media events are a second, browser-driven clock source. The interval
+  // remains for smooth cursor motion, while timeupdate/seeked guarantee progress
+  // even if a timer is throttled or interrupted by the surrounding application shell.
+  el.audio.addEventListener("timeupdate", () => {
+    if (backingModeActive) syncCursorFromBacking();
+  });
+  el.audio.addEventListener("seeked", () => {
+    if (backingModeActive) syncCursorFromBacking();
   });
   el.audio.addEventListener("pause", () => {
     if (backingModeActive) {
