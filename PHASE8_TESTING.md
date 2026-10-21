@@ -279,3 +279,29 @@ Fix validation against the uploaded files:
 Title regression:
 - The uploaded interactive filename is "Rockschool Drums Debut - Yellow.mxl".
 - Exact-filename title behavior therefore resolves to "Rockschool Drums Debut - Yellow", regardless of the embedded MusicXML work title.
+
+
+## Live UI backing-position bridge + forced asset refresh — 2026-10-21
+
+Observed from user recording 20261021-0440-45.8710005.mp4:
+- Backing audio was playing and the UI showed Synced backing playing.
+- The modern Practice screen remained at 00:00 / 01:04 for the full recording.
+- The orange cursor remained at the start of bar 1.
+- The header still displayed Phase 7.9, proving at least some browser runtime assets were stale relative to the Phase 8.1 repository.
+
+Fix:
+- syncCursorFromBacking no longer aborts when selectedSongId and activeInteractiveSongId differ; this can occur during cloud-library hydration/selection handoff.
+- The visible legacy position clock is updated before any score-tick mapping, so cursor errors cannot freeze the clock at 00:00.
+- Native HTMLAudioElement timeupdate and seeked events now call syncCursorFromBacking in addition to the 50 ms interval.
+- app.js broadcasts dtmtp:backing-position with audioMs, durationMs, requested scoreTick and actual alphaTab tick.
+- phase7-shell.js listens directly for dtmtp:backing-position and updates the modern p77Position clock without relying only on MutationObserver mirroring.
+- All runtime JS assets and the Phase 7 shell CSS received a shared 20261021-sync5 cache version so auth/shell/player code refresh together.
+
+Regression checks passed:
+- app.js, phase7-shell.js, practice.js, assignments.js, auth.js, song-cloud.js and cloud-sync.js all parse successfully.
+- index.html references sync5 versions for app, practice, assignments, auth, song-cloud and phase7-shell.
+- auth.js in the repository identifies the product as Phase 8.1 · Practice Requirements.
+
+Live verification still required:
+- Browser must show Phase 8.1 after reload; if it still shows Phase 7.9, it has not loaded sync5.
+- While backing audio plays, the modern time counter must advance beyond 00:00 and the score cursor must leave bar 1 after the detected count-in.
