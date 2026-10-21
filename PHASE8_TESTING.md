@@ -305,3 +305,14 @@ Regression checks passed:
 Live verification still required:
 - Browser must show Phase 8.1 after reload; if it still shows Phase 7.9, it has not loaded sync5.
 - While backing audio plays, the modern time counter must advance beyond 00:00 and the score cursor must leave bar 1 after the detected count-in.
+
+
+## MusicXML regression — Rockschool Shallow (MuseScore notation + TAB)
+Reference file: Rockschool-Shallow test.mxl
+- MuseScore export contains two adjacent guitar parts with matching 30-measure structure (original measures 5–34).
+- One part uses standard G-clef notation; the paired part uses TAB clef.
+- DT Music Trainer Pro now detects this notation/TAB pairing and inserts an in-memory MusicXML part-group.
+- alphaTab importer setting mergePartGroupsInMusicXml is enabled so the pair can import as one track with multiple staves.
+- Fallback: if alphaTab keeps the pair as separate tracks, DT renders the detected pair together automatically.
+- The compatibility pass does not rewrite note, tie, repeat, ending, rehearsal, direction, or articulation data; those original MusicXML elements remain in the normalized document.
+- Expected visual result: standard notation above TAB, with MusicXML repeat/tie/ending information available to alphaTab from the same score.
