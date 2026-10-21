@@ -755,6 +755,26 @@
     el.openInteractive.disabled = !song || !song.interactive;
     el.openPdf.disabled = !song || !song.pdf;
     el.playAudio.disabled = !song || !song.audio;
+    if(el.audioVersion){
+      el.audioVersion.innerHTML="";
+      const versions=song?normalizeAudioVersions(song).audioVersions:[];
+      if(!versions.length){
+        const option=document.createElement("option");
+        option.value="";
+        option.textContent="No backing track";
+        el.audioVersion.appendChild(option);
+        el.audioVersion.disabled=true;
+      }else{
+        versions.forEach((version,index)=>{
+          const option=document.createElement("option");
+          option.value=version.id;
+          option.textContent=(version.label||("Backing "+(index+1)))+" · "+(version.asset&&version.asset.name||"audio");
+          option.selected=version.id===song.activeAudioId;
+          el.audioVersion.appendChild(option);
+        });
+        el.audioVersion.disabled=false;
+      }
+    }
 
     if (!song) {
       el.selectedTitle.textContent = "No song selected";
@@ -770,7 +790,8 @@
 
     el.selectedTitle.textContent = song.title;
     const count = ["interactive","pdf","audio"].filter((key) => song[key]).length;
-    el.selectedMeta.textContent = count + " of 3 asset types attached";
+    const audioCount=normalizeAudioVersions(song).audioVersions.length;
+    el.selectedMeta.textContent = count + " of 3 asset types attached" + (audioCount>1 ? " · "+audioCount+" backing versions" : "");
     setAssetRow(el.interactiveAsset, "interactive", song.interactive, "🎼");
     setAssetRow(el.pdfAsset, "pdf", song.pdf, "📄");
     setAssetRow(el.audioAsset, "audio", song.audio, "🎧");
@@ -778,7 +799,7 @@
     el.viewerMeta.textContent = [
       song.interactive ? "Interactive ✓" : "",
       song.pdf ? "PDF ✓" : "",
-      song.audio ? "Audio ✓" : ""
+      song.audio ? "Audio ✓" + (normalizeAudioVersions(song).audioVersions.length>1 ? " ("+song.audioVersions.length+" versions)" : "") : ""
     ].filter(Boolean).join(" · ") || "No files attached yet";
     renderSyncPanel(song);
   }
@@ -832,7 +853,11 @@
         continue;
       }
 
-      const filenameTitle = kind === "interactive" ? exactInteractiveTitle(file) : titleFromFileName(file.name);
+      const filenameTitle = kind === "interactive"
+        ? exactInteractiveTitle(file)
+        : kind === "audio"
+          ? (audioGroupingTitle(file.name)||titleFromFileName(file.name))
+          : titleFromFileName(file.name);
       const filenameKey = normalizeTitle(filenameTitle);
 
       let song = forceSong || null;
@@ -859,8 +884,16 @@
         if (filenameKey) batchAliases.set(filenameKey, song);
       }
 
-      song[kind] = makeAsset(file);
-      if (kind === "interactive" || kind === "audio") song.syncPoints = [];
+      if(kind==="audio"){
+        addAudioVersion(song,file);
+      }else{
+        song[kind]=makeAsset(file);
+        if(kind==="interactive"){
+          normalizeAudioVersions(song);
+          song.audioVersions.forEach(v=>v.syncPoints=[]);
+          song.syncPoints=[];
+        }
+      }
       await putSong(song);
       changed.add(song.id);
       added++;
@@ -2176,6 +2209,19 @@
   el.openInteractive.onclick = openSelectedInteractive;
   el.openPdf.onclick = openSelectedPdf;
   el.playAudio.onclick = playSelectedAudio;
+  if(el.audioVersion){
+    el.audioVersion.addEventListener("change",async()=>{
+      if(!selectedSongId||!el.audioVersion.value) return;
+      try{
+        await selectAudioVersion(selectedSongId,el.audioVersion.value);
+        const song=await getSong(selectedSongId);
+        const version=activeAudioVersion(song);
+        setStatus("Backing version selected · "+(version&&version.label||"Audio"),"ok");
+      }catch(error){
+        setStatus("Could not switch backing version: "+error.message,"warn");
+      }
+    });
+  }
   el.sample.onclick = loadSample;
   el.saveLibrary.onclick = saveLibraryZip;
   el.loadLibrary.onclick = () => el.backupInput.click();
