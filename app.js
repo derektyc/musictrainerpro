@@ -593,11 +593,29 @@
   }
 
   async function selectAudioVersion(songId,versionId) {
-    const song=await getSong(songId);
+    let song=await getSong(songId);
+    const indexed=songsCache.find(s=>s.id===songId)||null;
+    const indexedVersion=indexed&&Array.isArray(indexed.audioVersions)
+      ? indexed.audioVersions.find(v=>v.id===versionId)
+      : null;
+
+    let version=song&&Array.isArray(song.audioVersions)
+      ? song.audioVersions.find(v=>v.id===versionId)
+      : null;
+
+    if((!version||!version.asset||!version.asset.blob) && window.DTMusicTrainerSongCloud && typeof window.DTMusicTrainerSongCloud.ensureAudioVersion==="function"){
+      await window.DTMusicTrainerSongCloud.ensureAudioVersion(songId,versionId);
+      song=await getSong(songId);
+      version=song&&Array.isArray(song.audioVersions)?song.audioVersions.find(v=>v.id===versionId):null;
+    }
+
+    if(!song && indexed) song=indexed;
     if(!song) return null;
     normalizeAudioVersions(song);
-    const version=song.audioVersions.find(v=>v.id===versionId);
+    version=song.audioVersions.find(v=>v.id===versionId)||version||indexedVersion;
     if(!version) return song;
+    if(!version.asset||!version.asset.blob) throw new Error("This backing-track version is not cached yet.");
+
     stopBackingAudio();
     song.activeAudioId=version.id;
     song.audio=version.asset;
