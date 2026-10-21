@@ -559,12 +559,18 @@
 
   function persistActiveAudioAlias(song) {
     if(!song) return song;
+    const incomingAudio=song.audio||null;
+    const incomingSyncPoints=normalizeSyncPoints(song.syncPoints);
+    const incomingActiveId=song.activeAudioId||"";
     normalizeAudioVersions(song);
+    if(incomingActiveId && song.audioVersions.some(v=>v.id===incomingActiveId)) song.activeAudioId=incomingActiveId;
     const active=song.audioVersions.find(v=>v.id===song.activeAudioId);
     if(active){
-      active.asset=song.audio||active.asset;
-      active.syncPoints=normalizeSyncPoints(song.syncPoints);
+      if(incomingAudio) active.asset=incomingAudio;
+      active.syncPoints=incomingSyncPoints;
       active.label=active.label||audioVersionLabel(active.asset&&active.asset.name);
+      song.audio=active.asset;
+      song.syncPoints=active.syncPoints;
     }
     return song;
   }
