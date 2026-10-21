@@ -2072,7 +2072,7 @@
       const zip = new JSZip();
       const manifest = {
         format: "DT Music Trainer Pro Library",
-        version: 1,
+        version: 2,
         exportedAt: new Date().toISOString(),
         songs: []
       };
@@ -2084,10 +2084,26 @@
           createdAt: song.createdAt || Date.now(),
           updatedAt: song.updatedAt || Date.now(),
           syncPoints: normalizeSyncPoints(song.syncPoints),
+          activeAudioId: song.activeAudioId||"",
+          audioVersions: [],
           assets: {}
         };
 
-        ["interactive","pdf","audio"].forEach((kind) => {
+        normalizeAudioVersions(song).audioVersions.forEach((version,index)=>{
+          const asset=version.asset;
+          if(!asset||!asset.blob) return;
+          const safeName=String(asset.name||("audio-"+(index+1))).replace(/[\\/:*?"<>|]+/g,"_");
+          const path="songs/"+song.id+"/audio-"+index+"-"+safeName;
+          zip.file(path,asset.blob);
+          meta.audioVersions.push({
+            id:version.id,
+            label:version.label,
+            syncPoints:normalizeSyncPoints(version.syncPoints),
+            asset:{name:asset.name,mime:asset.mime||"",size:asset.size||asset.blob.size||0,path}
+          });
+        });
+
+        ["interactive","pdf"].forEach((kind) => {
           const asset = song[kind];
           if (!asset || !asset.blob) return;
           const safeName = String(asset.name || kind).replace(/[\\/:*?"<>|]+/g, "_");
@@ -2137,7 +2153,7 @@
       const manifestEntry = zip.file(MANIFEST_NAME);
       if (!manifestEntry) throw new Error("This ZIP is not a DT Music Trainer Pro library.");
       const manifest = JSON.parse(await manifestEntry.async("text"));
-      if (!manifest || manifest.format !== "DT Music Trainer Pro Library" || manifest.version !== 1 || !Array.isArray(manifest.songs)) {
+      if (!manifest || manifest.format !== "DT Music Trainer Pro Library" || ![1,2].includes(manifest.version) || !Array.isArray(manifest.songs)) {
         throw new Error("Unsupported library backup.");
       }
 
@@ -2161,6 +2177,8 @@
           interactive: null,
           pdf: null,
           audio: null,
+          audioVersions: [],
+          activeAudioId: meta.activeAudioId||"",
           syncPoints: normalizeSyncPoints(meta.syncPoints)
         };
 
@@ -2177,6 +2195,30 @@
             blob: new Blob([bytes], { type: assetMeta.mime || "" }),
             updatedAt: Date.now()
           };
+        }
+
+        if(manifest.version>=2 && Array.isArray(meta.audioVersions)){
+          song.audioVersions=[];
+          for(const versionMeta of meta.audioVersions){
+            const assetMeta=versionMeta&&versionMeta.asset;
+            if(!assetMeta||!assetMeta.path) continue;
+            const entry=zip.file(assetMeta.path);
+            if(!entry) throw new Error("Backup is missing "+(assetMeta.name||"backing track")+".");
+            const bytes=await entry.async("uint8array");
+            song.audioVersions.push({
+              id:versionMeta.id||makeId(),
+              label:versionMeta.label||audioVersionLabel(assetMeta.name),
+              syncPoints:normalizeSyncPoints(versionMeta.syncPoints),
+              asset:{
+                name:assetMeta.name||"audio",
+                mime:assetMeta.mime||"",
+                size:assetMeta.size||bytes.byteLength,
+                blob:new Blob([bytes],{type:assetMeta.mime||""}),
+                updatedAt:Date.now()
+              }
+            });
+          }
+          normalizeAudioVersions(song);
         }
 
         await putSong(song);
