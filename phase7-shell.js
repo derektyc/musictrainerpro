@@ -479,14 +479,23 @@
         '<div class="p76-detail-section"><div class="p76-section-head"><strong>Teaching materials</strong><span>'+[selected.interactive,selected.pdf,selected.audio].filter(Boolean).length+' / 3 attached</span></div>'+
           assetRow("interactive","Interactive score",selected.interactive,"🎼")+
           assetRow("pdf","PDF score",selected.pdf,"📄")+
-          assetRow("audio","Backing track",selected.audio,"🎧")+
+          '<div class="p76-asset-row"><div class="p76-asset-icon">🎧</div><div class="p76-asset-main"><strong>Backing tracks</strong><span>'+((Array.isArray(selected.audioVersions)&&selected.audioVersions.length)?selected.audioVersions.length+" version"+(selected.audioVersions.length===1?"":"s"):"Not attached")+'</span></div><button id="p76AddAudioVersions" class="p7-secondary" type="button">Add Versions</button></div>'+
+          ((Array.isArray(selected.audioVersions)&&selected.audioVersions.length)
+            ? '<div class="p76-audio-version-list">'+selected.audioVersions.map((version,index)=>{
+                const asset=version&&version.asset||null;
+                const cached=asset&&asset.blob;
+                const active=version&&version.id===selected.activeAudioId;
+                return '<div class="p76-asset-row'+(active?' active':'')+'"><div class="p76-asset-icon">'+(active?'▶':'•')+'</div><div class="p76-asset-main"><strong>'+escapeHtml(version&&version.label||("Backing "+(index+1)))+'</strong><span>'+escapeHtml(asset&&asset.name||"Audio")+(active?' · selected':'')+'</span></div><button class="p7-secondary" data-p76-select-audio="'+escapeHtml(version&&version.id||"")+'" type="button">'+(active?'Selected':'Select')+'</button></div>';
+              }).join("")+'</div>'
+            : '')+
           (selected.audio&&selected.audio.blob?'<div class="p76-audio-preview"><audio id="p76AudioPreview" controls preload="metadata"></audio></div>':'')+
         '</div>'+
         '<div class="p76-detail-section"><div class="p76-section-head"><strong>Assigned students</strong><span>'+assignedStudents.size+'</span></div>'+
           (assignedRows||'<div class="p76-empty-inline">This song is not currently used by any assignment.</div>')+'</div>'+
         '<div class="p76-danger-zone"><div><strong>Delete song</strong><span>'+(related.length?"Used by "+related.length+" assignment"+(related.length===1?"":"s")+". Remove or change those assignments before deleting.":"Removes this song from the Drive Library and clears its local cache on this device.")+'</span></div>'+
           '<button id="p76DeleteSong" class="p76-danger-button" type="button" '+(related.length?"disabled":"")+'>Delete</button></div>'+
-        '<input id="p76ReplaceFile" type="file" hidden /></div>';
+        '<input id="p76ReplaceFile" type="file" hidden />'+
+        '<input id="p76AddAudioVersionsInput" type="file" multiple hidden accept=".mp3,.wav,audio/mpeg,audio/wav,audio/x-wav" /></div>';
     }
 
     root.innerHTML=
@@ -658,6 +667,34 @@
       }catch(error){setLibraryMessage(error.message||"Could not replace file.");}
     };
 
+    const addAudioVersions=$("p76AddAudioVersions");
+    const addAudioVersionsInput=$("p76AddAudioVersionsInput");
+    if(addAudioVersions&&addAudioVersionsInput&&selected){
+      addAudioVersions.onclick=()=>{addAudioVersionsInput.value="";addAudioVersionsInput.click();};
+      addAudioVersionsInput.onchange=async()=>{
+        const files=Array.from(addAudioVersionsInput.files||[]);
+        if(!files.length) return;
+        try{
+          const cloudApi=window.DTMusicTrainerSongCloud;
+          if(cloudApi&&typeof cloudApi.ensureLocalLibraryRecord==="function") await cloudApi.ensureLocalLibraryRecord(selected.id);
+          await api.addAudioVersions(selected.id,files);
+          libraryState.message=files.length+" backing version"+(files.length===1?"":"s")+" added · syncing to Drive.";
+          await renderLibraryPage();
+        }catch(error){setLibraryMessage(error.message||"Could not add backing versions.");}
+      };
+    }
+
+    root.querySelectorAll("[data-p76-select-audio]").forEach(b=>b.onclick=async()=>{
+      const versionId=b.dataset.p76SelectAudio;
+      if(!selected||!versionId) return;
+      try{
+        const playerApi=window.DTMusicTrainerLibrary;
+        if(playerApi&&typeof playerApi.selectAudioVersion==="function") await playerApi.selectAudioVersion(selected.id,versionId);
+        libraryState.message="Backing version selected.";
+        await renderLibraryPage();
+      }catch(error){setLibraryMessage(error.message||"Could not select backing version.");}
+    });
+
     const del=$("p76DeleteSong"); if(del&&selected&&!related.length) del.onclick=async()=>{
       if(!confirm('Delete "'+(selected.title||"this song")+'" from the Drive Library and clear its cache on this device?')) return;
       try{
@@ -716,7 +753,7 @@
       '<div class="p76-add-files">'+
         '<label><strong>🎼 Interactive score</strong><span>Guitar Pro / MusicXML · recommended for guided practice</span><input id="p76AddInteractive" type="file" accept=".gp,.gpx,.gp3,.gp4,.gp5,.gp6,.gp7,.gp8,.musicxml,.mxl,.xml"></label>'+
         '<label><strong>📄 PDF score</strong><span>Optional</span><input id="p76AddPdf" type="file" accept=".pdf,application/pdf"></label>'+
-        '<label><strong>🎧 Backing track</strong><span>MP3 / WAV · optional</span><input id="p76AddAudio" type="file" accept=".mp3,.wav,audio/mpeg,audio/wav,audio/x-wav"></label>'+
+        '<label><strong>🎧 Backing tracks</strong><span>MP3 / WAV · optional · select multiple files</span><input id="p76AddAudio" type="file" multiple accept=".mp3,.wav,audio/mpeg,audio/wav,audio/x-wav"></label>'+
       '</div><div id="p76AddError" class="p75-error" hidden></div>'+
       '<div class="p76-add-actions"><button id="p76AddCancel" class="p7-secondary" type="button">Cancel</button><button id="p76AddSave" class="p7-primary" type="button">Save Song</button></div></div>';
     root.appendChild(overlay);
@@ -768,7 +805,7 @@
           title,
           interactiveFile,
           pdfFile:$("p76AddPdf").files[0]||null,
-          audioFile:$("p76AddAudio").files[0]||null
+          audioFiles:Array.from($("p76AddAudio").files||[])
         });
         libraryState.selectedId=song.id;
         libraryState.message="Added "+song.title+".";
