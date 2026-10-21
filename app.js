@@ -2396,8 +2396,18 @@
     markActiveTracks();
   });
 
+  function normalizeRenderedLetRingLabels() {
+    try {
+      const nodes=el.alpha.querySelectorAll("text,tspan");
+      nodes.forEach(node=>{
+        if(String(node.textContent||"").trim()==="LetRing") node.textContent="let ring";
+      });
+    } catch(error){}
+  }
+
   api.renderFinished.on(() => {
     resetLookAheadScroll();
+    normalizeRenderedLetRingLabels();
     el.loading.style.display = "none";
     markActiveTracks();
     if (playerReady) setStatus("Interactive score ready.", "ok");
