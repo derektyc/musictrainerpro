@@ -472,7 +472,7 @@
         '<div class="p76-cloud-card"><div><span>Library source</span><strong>'+escapeHtml(cloud.text)+'</strong></div><p>'+
           (selected._cloud
             ? (selected._masterReady
-                ? (libraryDriveConnected()?"The master files are in Google Drive. Opening a score, PDF or backing track caches only that file on this device.":"The Drive master is listed here, but reconnect Google Drive before opening uncached files.")
+                ? "The master files are in Google Drive. Reading and caching them does not require a Drive connection; connect Drive only to upload, replace, rename or delete files."
                 : (libraryDriveConnected()?"This older cloud song is still being migrated into the private Drive Library folder.":"This older cloud song can remain visible from its catalogue metadata. Reconnect Drive to finish migrating it into the master Library."))
             : (libraryDriveConnected()?"This local song is waiting to finish syncing into the Drive Library.":"This song currently exists only on this device. Connect Google Drive to make it part of the master Library."))+
         '</p></div>'+
@@ -574,7 +574,6 @@
           rows.forEach(song=>["interactive","pdf","audio"].forEach(kind=>{
             if(song[kind]&&!song[kind].blob) needed.push([song.id,kind]);
           }));
-          if(needed.length&&!libraryDriveConnected()) throw new Error("Reconnect Google Drive before creating a full Library ZIP.");
           for(let i=0;i<needed.length;i++){
             setLibraryMessage("Preparing full Library backup · "+(i+1)+" / "+needed.length+" files");
             await cloudApi.ensureLibraryAsset(needed[i][0],needed[i][1]);
