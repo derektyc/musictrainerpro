@@ -1598,3 +1598,116 @@ body.p7-ready .auth-account-btn{font-size:12px!important}
 .auth-panel-sub,.auth-current-meta,.auth-empty{font-size:12px!important}
 .auth-row-actions button{font-size:12px!important}
 .auth-toast{font-size:13px!important}
+
+
+/* Phase 8.1 Library simplification + Practice audio version picker */
+.p76-simple-toolbar{
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  margin:10px 0 8px;
+}
+.p76-simple-toolbar .p76-search-wrap{flex:1 1 320px;min-width:220px}
+.p76-simple-toolbar .p76-filters{flex:0 0 auto}
+.p76-library-tools{
+  margin:0 0 10px;
+  border:1px solid #343435;
+  border-radius:12px;
+  background:#202021;
+  overflow:hidden;
+}
+.p76-library-tools>summary{
+  cursor:pointer;
+  list-style:none;
+  padding:9px 12px;
+  color:#aaa9a5;
+  font-size:11px;
+  font-weight:800;
+}
+.p76-library-tools>summary::-webkit-details-marker{display:none}
+.p76-library-tools>summary:after{content:"＋";float:right;color:#777}
+.p76-library-tools[open]>summary:after{content:"−"}
+.p76-library-tools-body{padding:0 10px 10px}
+.p76-library-tools .p76-toolbar-actions{justify-content:flex-start}
+.p76-library-tools .p76-dropzone{margin:8px 0 0;min-height:54px;padding:14px}
+.p76-song-row{
+  min-height:64px;
+  align-items:center;
+  padding:11px 12px;
+}
+.p76-song-main{gap:4px}
+.p76-song-main strong{font-size:13px}
+.p76-song-summary{
+  display:block;
+  color:#878783;
+  font-size:10px;
+  line-height:1.35;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  max-width:100%;
+}
+.p76-song-side{
+  min-width:auto;
+  align-items:center;
+  flex-direction:row;
+  gap:8px;
+}
+.p76-song-side b{font-size:18px;color:#6f6f6c;font-weight:400}
+.p76-song-assigned:empty{display:none}
+.p76-audio-version-row{padding-top:8px;padding-bottom:8px}
+.p76-audio-version-row .p76-asset-icon{opacity:.55}
+.p76-cloud-card{margin-top:8px}
+.p76-detail-section{margin-top:10px}
+.p76-stats,.p76-health{display:none!important}
+
+.p77-audio-version{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  min-width:160px;
+  max-width:260px;
+  height:32px;
+  padding:3px 7px;
+  border:1px solid #3b3b3c;
+  border-radius:8px;
+  background:#242425;
+}
+.p77-audio-version[hidden]{display:none!important}
+.p77-audio-version>span{
+  flex:0 0 auto;
+  color:#858582;
+  font-size:9px;
+  font-weight:850;
+  text-transform:uppercase;
+  letter-spacing:.04em;
+}
+.p77-audio-version select{
+  min-width:0;
+  width:100%;
+  border:0;
+  outline:0;
+  background:transparent;
+  color:#deded9;
+  font-size:10px;
+  font-weight:700;
+  text-overflow:ellipsis;
+}
+.p77-audio-version select:disabled{opacity:.45}
+
+@media(max-width:760px){
+  .p76-simple-toolbar{display:block}
+  .p76-simple-toolbar .p76-filters{margin-top:7px;display:grid;grid-template-columns:repeat(3,1fr)}
+  .p76-simple-toolbar .p76-filters button{width:100%}
+  .p76-library-tools>summary{font-size:12px;padding:11px 12px}
+  .p76-library-tools .p76-toolbar-actions{display:grid;grid-template-columns:1fr 1fr}
+  .p76-song-row{min-height:68px}
+  .p76-song-main strong{font-size:14px}
+  .p76-song-summary{font-size:11px}
+  .p77-score-actions{flex-wrap:wrap;justify-content:flex-end}
+  .p77-audio-version{order:3;min-width:150px;max-width:210px;height:30px}
+  .p77-audio-version>span{font-size:8px}
+  .p77-audio-version select{font-size:9px}
+}
+@media(max-width:520px){
+  .p77-audio-version{min-width:125px;max-width:160px}
+  .p77-audio-version>span{display:none}
+}
