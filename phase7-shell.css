@@ -1711,3 +1711,53 @@ body.p7-ready .auth-account-btn{font-size:12px!important}
   .p77-audio-version{min-width:125px;max-width:160px}
   .p77-audio-version>span{display:none}
 }
+
+
+/* Practice UX: direct loop selection, metronome and note highlight controls */
+.p77-clear-loop{
+  border-color:#5a3f3f;
+  color:#e6b0b0;
+}
+.p77-selection-hint{
+  flex:0 0 auto;
+  text-align:center;
+  padding:6px 10px;
+  background:#25211d;
+  border-top:1px solid #4a3d31;
+  color:#e1bd89;
+  font-size:10px;
+  font-weight:700;
+}
+.p77-selection-hint[hidden]{display:none!important}
+#p77Metro.active,#p77Highlights.active{
+  background:#765d39;
+  color:#181818;
+  border-color:transparent;
+}
+#p77Metro.active span,#p77Highlights.active span{color:#2a2117}
+#p77Highlights:not(.active){opacity:.82}
+#p77ClearLoop[hidden]{display:none!important}
+
+/* Let alphaTab's native range-selection handles remain visible and obvious. */
+#p7PagePractice .at-selection div,
+#p7PagePractice .at-selection{
+  pointer-events:auto;
+}
+
+@media(max-width:900px){
+  .p77-transport{flex-wrap:wrap}
+}
+@media(max-width:760px){
+  .p77-transport{
+    display:grid;
+    grid-template-columns:repeat(4,minmax(0,1fr));
+  }
+  .p77-transport .p77-control{
+    min-width:0;
+    width:100%;
+  }
+  .p77-selection-hint{
+    font-size:10px;
+    padding:7px 8px;
+  }
+}
