@@ -2361,6 +2361,14 @@
       updateStudentPracticeGuide({speed:d.currentSpeed,message:"Practice paused. Start again whenever you're ready."});
     }
   });
+  window.addEventListener("dtmtp:loop-range-changed",e=>{
+    const d=e.detail||{};
+    if(d.active) practiceLoopSelectMode=false;
+    if(currentRoute==="practice") syncPracticeChrome();
+  });
+  window.addEventListener("dtmtp:practice-display-changed",()=>{
+    if(currentRoute==="practice") syncPracticeChrome();
+  });
   window.addEventListener("dtmtp:materials-ready",refreshData);
   window.addEventListener("dtmtp:library-changed",()=>{
     if(currentRoute==="library") renderLibraryPage();
@@ -2378,6 +2386,11 @@
     if(completion){ hideCompletion(); return; }
     const addOverlay=$("p76AddOverlay");
     if(addOverlay){ addOverlay.remove(); return; }
+    if(practiceLoopSelectMode){
+      practiceLoopSelectMode=false;
+      syncPracticeChrome();
+      return;
+    }
     if(practiceToolsOpen){
       practiceToolsOpen=false;
       const practicePage=$("p7PagePractice");
