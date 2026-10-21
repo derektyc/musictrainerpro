@@ -98,6 +98,9 @@
   let backingPreRollFrozen = false;
   let synthVolumeBeforeBacking = 1;
   let naturalScoreEndMs = 0;
+  let lookAheadScrollRaf = 0;
+  let lookAheadScrollCooldownUntil = 0;
+  let lookAheadLastTarget = -1;
   let toastTimer = null;
   let pendingMusicXmlSystemBreaks = [];
   let pendingInteractiveIsMusicXml = false;
@@ -1744,6 +1747,7 @@
       } else {
         backingPreRollFrozen = false;
         if (Number.isFinite(scoreTick)) api.tickPosition = scoreTick;
+        scheduleLookAheadScroll(false);
         if (!el.audio.paused && !backingCursorDriverActive) startBackingCursorDriver();
       }
     } catch (error) {
@@ -1772,7 +1776,61 @@
     backingSyncTimer = setInterval(syncCursorFromBacking, 50);
   }
 
+  function scheduleLookAheadScroll(force) {
+    if (!el.viewport || !el.alpha) return;
+    if (lookAheadScrollRaf) cancelAnimationFrame(lookAheadScrollRaf);
+    lookAheadScrollRaf = requestAnimationFrame(() => {
+      lookAheadScrollRaf = 0;
+      const cursor = el.alpha.querySelector(".at-cursor-beat");
+      if (!cursor) return;
+
+      const viewportRect = el.viewport.getBoundingClientRect();
+      const cursorRect = cursor.getBoundingClientRect();
+      const viewportHeight = Math.max(1, el.viewport.clientHeight || viewportRect.height || 1);
+      const cursorCenter = cursorRect.top + cursorRect.height * 0.5;
+      const relativeY = cursorCenter - viewportRect.top;
+
+      // Start revealing the next system while the current cursor is still comfortably
+      // visible. Keeping the cursor around 38% from the top leaves roughly 60% of the
+      // viewport available for upcoming notation.
+      const triggerY = viewportHeight * 0.62;
+      if (!force && relativeY < triggerY) return;
+
+      const maxTop = Math.max(0, el.viewport.scrollHeight - el.viewport.clientHeight);
+      if (maxTop <= 0 || el.viewport.scrollTop >= maxTop - 2) return;
+
+      const desiredTop = Math.max(
+        0,
+        Math.min(
+          maxTop,
+          el.viewport.scrollTop + relativeY - viewportHeight * 0.38
+        )
+      );
+
+      if (desiredTop <= el.viewport.scrollTop + 8) return;
+      if (!force && Date.now() < lookAheadScrollCooldownUntil && Math.abs(desiredTop - lookAheadLastTarget) < 48) return;
+
+      lookAheadLastTarget = desiredTop;
+      lookAheadScrollCooldownUntil = Date.now() + 260;
+      try {
+        el.viewport.scrollTo({ top: desiredTop, behavior: "smooth" });
+      } catch (error) {
+        el.viewport.scrollTop = desiredTop;
+      }
+    });
+  }
+
+  function resetLookAheadScroll() {
+    if (lookAheadScrollRaf) {
+      cancelAnimationFrame(lookAheadScrollRaf);
+      lookAheadScrollRaf = 0;
+    }
+    lookAheadScrollCooldownUntil = 0;
+    lookAheadLastTarget = -1;
+  }
+
   function resetTransportState() {
+    resetLookAheadScroll();
     playerReady = false;
     [el.stop, el.play, el.countIn, el.metro, el.loop, el.speed, el.applyLoop, el.clearLoop]
       .forEach((node) => node.disabled = true);
@@ -1802,9 +1860,9 @@
       enableElementHighlighting: true,
       soundFont: ALPHATAB_BASE + "soundfont/sonivox.sf2",
       scrollElement: el.viewport,
-      scrollMode: "offscreen",
+      scrollMode: "off",
       nativeBrowserSmoothScroll: true,
-      scrollOffsetY: -24
+      scrollOffsetY: 0
     }
   });
 
@@ -2057,6 +2115,7 @@
   });
 
   api.renderFinished.on(() => {
+    resetLookAheadScroll();
     el.loading.style.display = "none";
     markActiveTracks();
     if (playerReady) setStatus("Interactive score ready.", "ok");
@@ -2085,6 +2144,7 @@
 
   api.playerPositionChanged.on((event) => {
     if (!backingModeActive) el.position.textContent = fmt(event.currentTime) + " / " + fmt(event.endTime);
+    scheduleLookAheadScroll(false);
   });
 
   api.error.on((event) => {
