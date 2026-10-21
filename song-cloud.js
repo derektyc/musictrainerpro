@@ -868,7 +868,12 @@
       updatedAt:Number(meta.libraryUpdatedAt||meta.localUpdatedAt||Date.now()),
       syncPoints:Array.isArray(meta.syncPoints)?meta.syncPoints:[],
       activeAudioId:meta.activeAudioId||"",
-      audioVersions:[],
+      audioVersions:remoteLibraryAudioVersions(meta,masterAssets(meta)).map(v=>({
+        id:v.id,
+        label:v.label||((v.asset&&v.asset.name)||"Backing track"),
+        syncPoints:Array.isArray(v.syncPoints)?v.syncPoints:[],
+        asset:v.asset||null
+      })),
       interactive:null,
       pdf:null,
       audio:null
@@ -920,12 +925,33 @@
         title:meta.title||"Untitled Song",
         createdAt:Number(meta.createdAt||Date.now()),
         updatedAt:Number(meta.libraryUpdatedAt||meta.localUpdatedAt||Date.now()),
+        activeAudioId:meta.activeAudioId||"",
+        audioVersions:remoteLibraryAudioVersions(meta,assets).map(v=>({
+          id:v.id,
+          label:v.label||((v.asset&&v.asset.name)||"Backing track"),
+          syncPoints:Array.isArray(v.syncPoints)?v.syncPoints:[],
+          asset:v.asset||null
+        })),
         syncPoints:Array.isArray(meta.syncPoints)?meta.syncPoints:[],
         interactive:null,pdf:null,audio:null
       };
       local.title=meta.title||local.title||"Untitled Song";
       local.createdAt=Number(meta.createdAt||local.createdAt||Date.now());
       local.updatedAt=Number(meta.libraryUpdatedAt||meta.localUpdatedAt||local.updatedAt||Date.now());
+      const remoteVersions=remoteLibraryAudioVersions(meta,assets);
+      if(remoteVersions.length){
+        const cachedMap=new Map(localAudioVersions(local).map(v=>[v.id,v]));
+        local.audioVersions=remoteVersions.map(v=>{
+          const cached=cachedMap.get(v.id);
+          return {
+            id:v.id,
+            label:v.label||((v.asset&&v.asset.name)||"Backing track"),
+            syncPoints:Array.isArray(v.syncPoints)?v.syncPoints:[],
+            asset:cached&&sameAsset(cached.asset,v.asset)?cached.asset:(v.asset||null)
+          };
+        });
+        local.activeAudioId=meta.activeAudioId||(local.audioVersions[0]&&local.audioVersions[0].id)||"";
+      }
       local.syncPoints=Array.isArray(meta.syncPoints)?meta.syncPoints:(local.syncPoints||[]);
       local[kind]=asset;
       await saveLocalSong(local);
