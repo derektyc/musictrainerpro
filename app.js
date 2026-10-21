@@ -1974,6 +1974,11 @@
     importer: {
       mergePartGroupsInMusicXml: true
     },
+    notation: {
+      // Standard notation already carries the rhythm when score + TAB are shown
+      // together. Keep TAB clean by hiding its duplicate stems/flags/beams.
+      rhythmMode: alphaTab.TabRhythmMode ? alphaTab.TabRhythmMode.Hidden : 0
+    },
     player: {
       enablePlayer: true,
       enableUserInteraction: true,
