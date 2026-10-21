@@ -1102,8 +1102,10 @@
       const oldSnap=await F.getDoc(metaRef);
       const old=oldSnap.exists()?oldSnap.data():{};
       const master=old.libraryAssets||{};
+      const masterAudioVersions=Array.isArray(old.libraryAudioVersions)?old.libraryAudioVersions:[];
       const oldAssets=old.assets||{};
-      const hasMaster=Object.values(master).some(Boolean);
+      const oldAssignedAudioVersions=Array.isArray(old.audioVersions)?old.audioVersions:[];
+      const hasMaster=Object.values(master).some(Boolean)||masterAudioVersions.length>0;
 
       if(!song&&!hasMaster) return null;
 
@@ -1117,9 +1119,10 @@
 
       emit("syncing","Publishing "+source.title+" for student access…");
       const assets={};
+      const assignedAudioVersions=[];
 
       try{
-        for(const kind of ["interactive","pdf","audio"]){
+        for(const kind of ["interactive","pdf"]){
           if(master[kind]){
             assets[kind]=await copyMasterAssetToAssigned(master[kind],oldAssets[kind]||null);
           }else if(song&&song[kind]&&song[kind].blob){
@@ -1129,13 +1132,43 @@
           }
         }
 
+        const localVersions=localAudioVersions(song);
+        const sourceVersions=masterAudioVersions.length
+          ? masterAudioVersions
+          : localVersions.map(v=>({id:v.id,label:v.label,syncPoints:v.syncPoints,asset:v.asset}));
+        const oldAssignedMap=new Map(oldAssignedAudioVersions.map(v=>[v.id,v]));
+        for(const version of sourceVersions){
+          let assignedAsset=null;
+          const oldAssigned=oldAssignedMap.get(version.id);
+          if(masterAudioVersions.length&&version.asset){
+            assignedAsset=await copyMasterAssetToAssigned(version.asset,oldAssigned&&oldAssigned.asset||null);
+          }else if(version.asset&&version.asset.blob){
+            assignedAsset=await uploadAsset(version.asset,oldAssigned&&oldAssigned.asset||null,materialsFolderId,true);
+          }else if(oldAssigned&&oldAssigned.asset){
+            assignedAsset=oldAssigned.asset;
+          }
+          if(assignedAsset){
+            assignedAudioVersions.push({
+              id:version.id,
+              label:version.label||assignedAsset.name||"Backing track",
+              syncPoints:Array.isArray(version.syncPoints)?version.syncPoints:[],
+              asset:assignedAsset
+            });
+          }
+        }
+        const activeAudioId=old.activeAudioId||(song&&song.activeAudioId)||(assignedAudioVersions[0]&&assignedAudioVersions[0].id)||"";
+        const activeAssigned=assignedAudioVersions.find(v=>v.id===activeAudioId)||assignedAudioVersions[0]||null;
+        assets.audio=activeAssigned?activeAssigned.asset:(oldAssets.audio||null);
+
         await F.setDoc(metaRef,{
           id:source.id,
           title:source.title,
           provider:"google-drive",
           createdAt:source.createdAt,
           localUpdatedAt:source.updatedAt,
-          syncPoints:source.syncPoints,
+          activeAudioId:activeAssigned?activeAssigned.id:activeAudioId,
+          audioVersions:assignedAudioVersions,
+          syncPoints:activeAssigned&&Array.isArray(activeAssigned.syncPoints)?activeAssigned.syncPoints:source.syncPoints,
           assets,
           updatedAt:F.serverTimestamp()
         },{merge:true});
