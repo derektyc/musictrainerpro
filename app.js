@@ -271,43 +271,13 @@
     return pairs;
   }
 
-  function injectMuseScoreNotationTabGroups(doc) {
-    const partList=Array.from(doc.getElementsByTagName("part-list"))[0];
-    if(!partList) return 0;
-    const pairs=museScoreNotationTabPairs(doc);
-    if(!pairs.length) return 0;
-
-    const existingGroups=Array.from(partList.children||[]).filter(n=>n.localName==="part-group");
-    let nextNumber=1;
-    existingGroups.forEach(g=>{
-      const n=parseInt(g.getAttribute("number")||"0",10);
-      if(Number.isFinite(n)) nextNumber=Math.max(nextNumber,n+1);
-    });
-
-    let added=0;
-    pairs.forEach(pair=>{
-      const first=pair[0].sp, second=pair[1].sp;
-      const ns=partList.namespaceURI||doc.documentElement.namespaceURI||null;
-      const make=(name)=>ns?doc.createElementNS(ns,name):doc.createElement(name);
-      const start=make("part-group");
-      start.setAttribute("type","start");
-      start.setAttribute("number",String(nextNumber));
-      const groupName=make("group-name");
-      groupName.textContent="Guitar";
-      start.appendChild(groupName);
-
-      const stop=make("part-group");
-      stop.setAttribute("type","stop");
-      stop.setAttribute("number",String(nextNumber));
-
-      partList.insertBefore(start,first);
-      if(second.nextSibling) partList.insertBefore(stop,second.nextSibling);
-      else partList.appendChild(stop);
-      nextNumber++;
-      added++;
-    });
-    return added;
+  function detectMuseScoreNotationTabPairs(doc) {
+    // Keep MuseScore's standard-notation and TAB parts structurally separate.
+    // alphaTab can render multiple tracks together, and preserving separate tracks
+    // avoids cross-staff tie matching artifacts introduced by part-group merging.
+    return museScoreNotationTabPairs(doc).length;
   }
+
 
   function extractMuseScoreLetRingSpans(doc) {
     if(!doc) return [];
@@ -415,7 +385,7 @@
     const systemBreaks = musicXmlSystemBreaks(doc);
     const letRingSpans = extractMuseScoreLetRingSpans(doc);
     const letRingFixes = letRingSpans.length;
-    const groupedPartPairs = injectMuseScoreNotationTabGroups(doc);
+    const groupedPartPairs = detectMuseScoreNotationTabPairs(doc);
     let restoredNoteheads = 0;
     const notes = Array.from(doc.getElementsByTagName("note"));
     const insertBeforeNames = new Set(["notehead-text","staff","beam","notations","lyric","play","listen"]);
@@ -2069,7 +2039,7 @@
       scale: 1
     },
     importer: {
-      mergePartGroupsInMusicXml: true
+      mergePartGroupsInMusicXml: false
     },
     notation: {
       // Standard notation already carries the rhythm when score + TAB are shown
@@ -2377,8 +2347,8 @@
     el.loopStart.value = "1";
     el.loopEnd.value = String(Math.min(4, Math.max(1, barCount)));
     renderTrackButtons(score);
-    // If alphaTab did not collapse a detected notation/TAB pair into one multi-staff
-    // track, render the paired tracks together rather than silently showing only P1.
+    // MuseScore commonly exports notation and TAB as separate parts. Keep them
+    // separate internally (for correct ties/effects) but display the detected pair together.
     if(groupedPartPairs>0 && score.tracks && score.tracks.length>1){
       try{api.renderTracks(score.tracks.slice(0,Math.min(score.tracks.length,groupedPartPairs*2)));}catch(error){}
     }
