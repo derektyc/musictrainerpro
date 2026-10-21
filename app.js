@@ -1521,13 +1521,24 @@
     el.position.textContent = fmt(audioMs) + " / " + fmt(durationMs);
     updateSyncCurrentTime();
 
+    let scoreTick = 0;
     try {
-      const scoreTick = scoreTickFromBackingAudio(audioMs);
+      scoreTick = scoreTickFromBackingAudio(audioMs);
       if (Number.isFinite(scoreTick)) api.tickPosition = scoreTick;
       if (!el.audio.paused && !backingCursorDriverActive) startBackingCursorDriver();
     } catch (error) {
       console.warn("Backing cursor update failed",error);
     }
+
+    window.dispatchEvent(new CustomEvent("dtmtp:backing-position",{
+      detail:{
+        audioMs,
+        durationMs,
+        scoreTick:Number.isFinite(scoreTick)?scoreTick:0,
+        actualTick:Number(api.tickPosition)||0,
+        playing:!el.audio.paused
+      }
+    }));
 
     if (backingLoopEnabled && backingLoopEndMs > backingLoopStartMs && audioMs >= backingLoopEndMs - 20) {
       el.audio.currentTime = backingLoopStartMs / 1000;
