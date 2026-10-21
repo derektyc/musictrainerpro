@@ -308,23 +308,72 @@
     return added;
   }
 
+  function normalizeMuseScoreLetRingDirections(doc) {
+    if(!doc) return 0;
+    const directions=Array.from(doc.getElementsByTagName("direction"));
+    const activeNumbers=new Set();
+    let converted=0;
+
+    directions.forEach(direction=>{
+      const words=Array.from(direction.getElementsByTagName("words"));
+      const letRingWord=words.find(node=>/^let\s*ring$/i.test(String(node.textContent||"").trim()));
+      const brackets=Array.from(direction.getElementsByTagName("bracket"));
+
+      if(letRingWord){
+        // alphaTab's MusicXML importer recognizes LetRing when a words direction
+        // is followed by <dashes>, while MuseScore exports this effect as a
+        // dashed generic <bracket>, which alphaTab does not support.
+        letRingWord.textContent="LetRing";
+        brackets.forEach(bracket=>{
+          if(String(bracket.getAttribute("type")||"").toLowerCase()!=="start") return;
+          const number=String(bracket.getAttribute("number")||"1");
+          const ns=bracket.namespaceURI||doc.documentElement.namespaceURI||null;
+          const dashes=ns?doc.createElementNS(ns,"dashes"):doc.createElement("dashes");
+          dashes.setAttribute("type","start");
+          dashes.setAttribute("number",number);
+          bracket.parentNode.replaceChild(dashes,bracket);
+          activeNumbers.add(number);
+          converted++;
+        });
+      }
+    });
+
+    if(activeNumbers.size){
+      directions.forEach(direction=>{
+        Array.from(direction.getElementsByTagName("bracket")).forEach(bracket=>{
+          if(String(bracket.getAttribute("type")||"").toLowerCase()!=="stop") return;
+          const number=String(bracket.getAttribute("number")||"1");
+          if(!activeNumbers.has(number)) return;
+          const ns=bracket.namespaceURI||doc.documentElement.namespaceURI||null;
+          const dashes=ns?doc.createElementNS(ns,"dashes"):doc.createElement("dashes");
+          dashes.setAttribute("type","stop");
+          dashes.setAttribute("number",number);
+          bracket.parentNode.replaceChild(dashes,bracket);
+          converted++;
+        });
+      });
+    }
+    return converted;
+  }
+
   function normalizePercussionMusicXml(xmlText) {
     const source = String(xmlText || "");
-    if (!source.trim()) return { xml: source, changed: false, restoredNoteheads: 0, groupedPartPairs: 0, systemBreaks: [] };
+    if (!source.trim()) return { xml: source, changed: false, restoredNoteheads: 0, groupedPartPairs: 0, letRingFixes: 0, systemBreaks: [] };
 
     let doc;
     try {
       doc = new DOMParser().parseFromString(source, "application/xml");
     } catch (error) {
-      return { xml: source, changed: false, restoredNoteheads: 0, groupedPartPairs: 0, systemBreaks: [] };
+      return { xml: source, changed: false, restoredNoteheads: 0, groupedPartPairs: 0, letRingFixes: 0, systemBreaks: [] };
     }
 
     if (!doc || doc.getElementsByTagName("parsererror").length) {
-      return { xml: source, changed: false, restoredNoteheads: 0, groupedPartPairs: 0, systemBreaks: [] };
+      return { xml: source, changed: false, restoredNoteheads: 0, groupedPartPairs: 0, letRingFixes: 0, systemBreaks: [] };
     }
 
     const systemBreaks = musicXmlSystemBreaks(doc);
     const groupedPartPairs = injectMuseScoreNotationTabGroups(doc);
+    const letRingFixes = normalizeMuseScoreLetRingDirections(doc);
     let restoredNoteheads = 0;
     const notes = Array.from(doc.getElementsByTagName("note"));
     const insertBeforeNames = new Set(["notehead-text","staff","beam","notations","lyric","play","listen"]);
@@ -350,8 +399,8 @@
       restoredNoteheads++;
     });
 
-    if (!restoredNoteheads && !groupedPartPairs) {
-      return { xml: source, changed: false, restoredNoteheads: 0, groupedPartPairs: 0, systemBreaks };
+    if (!restoredNoteheads && !groupedPartPairs && !letRingFixes) {
+      return { xml: source, changed: false, restoredNoteheads: 0, groupedPartPairs: 0, letRingFixes: 0, systemBreaks };
     }
 
     try {
@@ -360,10 +409,11 @@
         changed: true,
         restoredNoteheads,
         groupedPartPairs,
+        letRingFixes,
         systemBreaks
       };
     } catch (error) {
-      return { xml: source, changed: false, restoredNoteheads: 0, groupedPartPairs: 0, systemBreaks };
+      return { xml: source, changed: false, restoredNoteheads: 0, groupedPartPairs: 0, letRingFixes: 0, systemBreaks };
     }
   }
 
@@ -430,6 +480,7 @@
         bytes: rawBytes,
         percussionFixes: 0,
         groupedPartPairs: normalized.groupedPartPairs || 0,
+        letRingFixes: normalized.letRingFixes || 0,
         systemBreaks: normalized.systemBreaks || [],
         isMusicXml: true
       };
@@ -439,6 +490,7 @@
       bytes: new TextEncoder().encode(normalized.xml),
       percussionFixes: normalized.restoredNoteheads,
       groupedPartPairs: normalized.groupedPartPairs || 0,
+      letRingFixes: normalized.letRingFixes || 0,
       systemBreaks: normalized.systemBreaks || [],
       isMusicXml: true
     };
@@ -2182,8 +2234,11 @@
       el.viewerTitle.textContent = song.title;
       el.viewerMeta.textContent = "Interactive score · " + song.interactive.name +
         (prepared.groupedPartPairs ? " · Notation + TAB paired" : "") +
+        (prepared.letRingFixes ? " · Let ring fixed" : "") +
         (prepared.percussionFixes ? " · Drum notation compatibility applied" : "");
-      if (prepared.groupedPartPairs) {
+      if (prepared.letRingFixes) {
+        toast("MusicXML compatibility applied · restored MuseScore let-ring marking.");
+      } else if (prepared.groupedPartPairs) {
         toast("MusicXML compatibility applied · paired standard notation with TAB.");
       } else if (prepared.percussionFixes) {
         toast("Drum score fixed · restored " + prepared.percussionFixes + " normal notehead" + (prepared.percussionFixes === 1 ? "" : "s") + ".");
