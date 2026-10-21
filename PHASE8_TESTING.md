@@ -316,3 +316,17 @@ Reference file: Rockschool-Shallow test.mxl
 - Fallback: if alphaTab keeps the pair as separate tracks, DT renders the detected pair together automatically.
 - The compatibility pass does not rewrite note, tie, repeat, ending, rehearsal, direction, or articulation data; those original MusicXML elements remain in the normalized document.
 - Expected visual result: standard notation above TAB, with MusicXML repeat/tie/ending information available to alphaTab from the same score.
+
+
+### Shallow structural audit (source MXL)
+Expected source structure verified from Rockschool-Shallow test.mxl:
+- 2 guitar parts, 30 measures each, original measure numbers 5–34.
+- 61 tie starts + 61 tie stops (with matching MusicXML tied notations).
+- 2 forward repeats + 2 backward repeats.
+- Alternate endings: 1 start/stop and 2 start/discontinue.
+- Rehearsal marks: Verse, Chorus.
+- Tempo: quarter = 95.
+- Let-ring source: words "let ring" + MuseScore dashed generic bracket start/stop.
+- MuseScore let-ring bracket is normalized in-memory to alphaTab-supported words "LetRing" + dashes start/stop.
+- 3 up-bow and 9 down-bow technical articulations are present in source.
+Regression expectation: no stray generic bracket line; let-ring must render as a line effect, notation/TAB remain paired, repeats/endings/ties remain available to alphaTab.
