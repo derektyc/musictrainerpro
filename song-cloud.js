@@ -607,18 +607,54 @@
     };
   }
 
+
+  function localAudioVersions(song){
+    if(!song) return [];
+    if(Array.isArray(song.audioVersions)&&song.audioVersions.length) return song.audioVersions.filter(v=>v&&v.asset);
+    if(song.audio) return [{id:"legacy-"+song.id,label:(song.audio.name||"Backing track"),asset:song.audio,syncPoints:Array.isArray(song.syncPoints)?song.syncPoints:[]}];
+    return [];
+  }
+
+  function remoteLibraryAudioVersions(meta,assets){
+    const list=Array.isArray(meta&&meta.libraryAudioVersions)?meta.libraryAudioVersions:[];
+    if(list.length) return list.filter(v=>v&&v.asset);
+    if(assets&&assets.audio) return [{id:(meta&&meta.activeAudioId)||"legacy-"+((meta&&meta.id)||""),label:(assets.audio.name||"Backing track"),asset:assets.audio,syncPoints:Array.isArray(meta&&meta.syncPoints)?meta.syncPoints:[]}];
+    return [];
+  }
+
+  function mergeAudioVersions(meta,assets,local){
+    const remotes=remoteLibraryAudioVersions(meta,assets);
+    const locals=localAudioVersions(local);
+    const localMap=new Map(locals.map(v=>[v.id,v]));
+    if(!remotes.length) return locals;
+    return remotes.map(v=>{
+      const lv=localMap.get(v.id)||null;
+      return {
+        id:v.id,
+        label:v.label||((v.asset&&v.asset.name)||"Backing track"),
+        syncPoints:Array.isArray(v.syncPoints)?v.syncPoints:[],
+        asset:mergedLibraryAsset(v.asset,lv&&lv.asset)
+      };
+    });
+  }
+
   function mergeLibraryRecord(meta,local){
     const assets=masterAssets(meta);
     const hasCloud=!!meta;
+    const audioVersions=mergeAudioVersions(meta,assets,local);
+    const activeAudioId=(meta&&meta.activeAudioId)||(local&&local.activeAudioId)||(audioVersions[0]&&audioVersions[0].id)||"";
+    const activeVersion=audioVersions.find(v=>v.id===activeAudioId)||audioVersions[0]||null;
     const song={
       id:(meta&&meta.id)||(local&&local.id)||"",
       title:(meta&&meta.title)||(local&&local.title)||"Untitled Song",
       createdAt:Number((meta&&meta.createdAt)||(local&&local.createdAt)||Date.now()),
       updatedAt:Number((meta&&meta.libraryUpdatedAt)||(meta&&meta.localUpdatedAt)||(local&&local.updatedAt)||Date.now()),
-      syncPoints:Array.isArray(meta&&meta.syncPoints)?meta.syncPoints:(Array.isArray(local&&local.syncPoints)?local.syncPoints:[]),
+      activeAudioId:activeVersion?activeVersion.id:"",
+      audioVersions,
+      syncPoints:activeVersion?(Array.isArray(activeVersion.syncPoints)?activeVersion.syncPoints:[]):(Array.isArray(meta&&meta.syncPoints)?meta.syncPoints:(Array.isArray(local&&local.syncPoints)?local.syncPoints:[])),
       interactive:mergedLibraryAsset(assets.interactive||null,local&&local.interactive),
       pdf:mergedLibraryAsset(assets.pdf||null,local&&local.pdf),
-      audio:mergedLibraryAsset(assets.audio||null,local&&local.audio),
+      audio:activeVersion?activeVersion.asset:mergedLibraryAsset(assets.audio||null,local&&local.audio),
       _cloud:hasCloud,
       _masterReady:!!(meta&&meta.libraryFolderId&&meta.libraryAssets),
       _localOnly:!hasCloud,
@@ -707,18 +743,18 @@
       const oldMaster=old.libraryAssets||{};
       const folderId=await ensureSongFolder(songId,song.title,old.libraryFolderId||"");
       const libraryAssets={};
+      const libraryAudioVersions=[];
+      const oldAudioVersions=Array.isArray(old.libraryAudioVersions)?old.libraryAudioVersions:[];
+      const oldAudioMap=new Map(oldAudioVersions.map(v=>[v.id,v]));
 
       emit("syncing","Syncing "+(song.title||"song")+" to the Drive Library…");
 
-      for(const kind of ["interactive","pdf","audio"]){
+      for(const kind of ["interactive","pdf"]){
         if(song[kind]&&song[kind].blob){
           libraryAssets[kind]=await uploadAsset(song[kind],oldMaster[kind]||null,folderId,false);
         }else if(oldMaster[kind]){
           libraryAssets[kind]=oldMaster[kind];
         }else if(old.assets&&old.assets[kind]){
-          // One-time migration path for songs that existed in Assigned Materials before
-          // the Drive master Library was introduced. Copy the existing public asset into
-          // the private song folder without making it part of the local cache.
           const legacyAsset=await downloadDriveAsset(old.assets[kind]);
           libraryAssets[kind]=legacyAsset
             ? await uploadAsset(legacyAsset,null,folderId,false)
@@ -728,6 +764,26 @@
         }
       }
 
+      const localVersions=localAudioVersions(song);
+      for(const version of localVersions){
+        const oldVersion=oldAudioMap.get(version.id);
+        const oldAsset=oldVersion&&oldVersion.asset||null;
+        const remoteAsset=version.asset&&version.asset.blob
+          ? await uploadAsset(version.asset,oldAsset,folderId,false)
+          : oldAsset;
+        if(remoteAsset){
+          libraryAudioVersions.push({
+            id:version.id,
+            label:version.label||remoteAsset.name||"Backing track",
+            syncPoints:Array.isArray(version.syncPoints)?version.syncPoints:[],
+            asset:remoteAsset
+          });
+        }
+      }
+      const activeAudioId=song.activeAudioId||(libraryAudioVersions[0]&&libraryAudioVersions[0].id)||"";
+      const activeRemote=libraryAudioVersions.find(v=>v.id===activeAudioId)||libraryAudioVersions[0]||null;
+      libraryAssets.audio=activeRemote?activeRemote.asset:(oldMaster.audio||null);
+
       const masterUpdatedAt=Number(song.updatedAt||Date.now());
       await F.setDoc(metaRef,{
         id:song.id,
@@ -736,9 +792,11 @@
         libraryProvider:"google-drive",
         libraryFolderId:folderId,
         libraryAssets,
+        libraryAudioVersions,
+        activeAudioId,
         libraryUpdatedAt:masterUpdatedAt,
         createdAt:Number(song.createdAt||old.createdAt||Date.now()),
-        syncPoints:Array.isArray(song.syncPoints)?song.syncPoints:[],
+        syncPoints:activeRemote&&Array.isArray(activeRemote.syncPoints)?activeRemote.syncPoints:(Array.isArray(song.syncPoints)?song.syncPoints:[]),
         updatedAt:F.serverTimestamp()
       },{merge:true});
 
