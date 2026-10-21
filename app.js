@@ -1975,6 +1975,41 @@
     return Number(masterBar.start) || 0;
   }
 
+  function barRangeFromPlaybackRange(range) {
+    if(!range || !api || !api.score || !Array.isArray(api.score.masterBars) || !api.score.masterBars.length) return null;
+    const bars=api.score.masterBars;
+    const startTick=Math.max(0,Number(range.startTick)||0);
+    const endTick=Math.max(startTick+1,Number(range.endTick)||startTick+1);
+    let startIndex=0;
+    let endIndex=bars.length-1;
+    for(let i=0;i<bars.length;i++){
+      const start=masterBarPlaybackStart(bars[i]);
+      const next=i+1<bars.length?masterBarPlaybackStart(bars[i+1]):Infinity;
+      if(startTick>=start && startTick<next){startIndex=i;break;}
+    }
+    for(let i=startIndex;i<bars.length;i++){
+      const start=masterBarPlaybackStart(bars[i]);
+      const next=i+1<bars.length?masterBarPlaybackStart(bars[i+1]):Infinity;
+      if((endTick-1)>=start && (endTick-1)<next){endIndex=i;break;}
+    }
+    return {startBar:startIndex+1,endBar:endIndex+1};
+  }
+
+  function activateLoopFromPlaybackRange(range,origin) {
+    const mapped=barRangeFromPlaybackRange(range);
+    if(!mapped) return;
+    el.loopStart.value=String(mapped.startBar);
+    el.loopEnd.value=String(mapped.endBar);
+    api.isLooping=!backingModeActive;
+    backingLoopEnabled=backingModeActive;
+    if(backingModeActive) updateBackingLoopTimes(mapped.startBar,mapped.endBar);
+    el.loop.classList.add("active");
+    el.loopStatus.textContent="Looping bars "+mapped.startBar+"–"+mapped.endBar+(backingModeActive?" with backing track.":".");
+    window.dispatchEvent(new CustomEvent("dtmtp:loop-range-changed",{
+      detail:{startBar:mapped.startBar,endBar:mapped.endBar,origin:origin||"selection",active:true}
+    }));
+  }
+
   function applyLoopRange() {
     if (!api.score || !api.score.masterBars || !api.score.masterBars.length) return;
 
@@ -2030,6 +2065,7 @@
     backingLoopEndMs = 0;
     el.loop.classList.remove("active");
     el.loopStatus.textContent = "No loop range set.";
+    window.dispatchEvent(new CustomEvent("dtmtp:loop-range-changed",{detail:{active:false}}));
     try { api.clearPlaybackRangeHighlight(); } catch (e) {}
   }
 
@@ -2188,6 +2224,19 @@
     if (!backingModeActive) el.position.textContent = fmt(event.currentTime) + " / " + fmt(event.endTime);
     scheduleLookAheadScroll(false);
   });
+
+  if(api.playbackRangeChanged && typeof api.playbackRangeChanged.on==="function"){
+    api.playbackRangeChanged.on((event)=>{
+      const range=event&&event.playbackRange?event.playbackRange:api.playbackRange;
+      if(range){
+        activateLoopFromPlaybackRange(range,"score-selection");
+      }else if(!api.playbackRange){
+        backingLoopEnabled=false;
+        el.loop.classList.remove("active");
+        window.dispatchEvent(new CustomEvent("dtmtp:loop-range-changed",{detail:{active:false}}));
+      }
+    });
+  }
 
   api.error.on((event) => {
     console.error("alphaTab error:", event);
