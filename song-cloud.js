@@ -206,7 +206,7 @@
     }catch(error){
       const btn=$("dtmtpDriveConnectBtn");
       if(btn) btn.textContent="Reconnect Google Drive";
-      setDriveStatus("Reconnect Google Drive to continue cloud Library access","pending");
+      setDriveStatus("Reconnect Google Drive when you need to upload or edit Drive files","pending");
       return false;
     }
   }
@@ -830,6 +830,22 @@
     const cloudMap=new Map(cloud.map(row=>[row.id,row]));
     const locals=await localSongs().catch(()=>[]);
 
+    // One-time/ongoing compatibility migration: older master Library files were
+    // private. While teacher Drive authorization is available, make every master
+    // asset link-readable so future reads no longer need OAuth.
+    const publicized=new Set();
+    for(const meta of cloud){
+      const assets=masterAssets(meta);
+      const candidates=[assets.interactive,assets.pdf,assets.audio];
+      remoteLibraryAudioVersions(meta,assets).forEach(v=>candidates.push(v&&v.asset));
+      for(const asset of candidates){
+        const fileId=asset&&asset.fileId;
+        if(!fileId||publicized.has(fileId)) continue;
+        await makeAnyoneReader(fileId);
+        publicized.add(fileId);
+      }
+    }
+
     for(const song of locals){
       const remote=cloudMap.get(song.id)||null;
       const remoteUpdated=Number(remote&&remote.libraryUpdatedAt||0);
@@ -1411,7 +1427,7 @@
       }else if(driveSessionActive()&&localStorage.getItem(DRIVE_CONNECTED_KEY)){
         setDriveStatus("Restoring Google Drive Library session…","syncing");
       }else{
-        setDriveStatus("Connect Google Drive to sync the teacher Library","pending");
+        setDriveStatus("Cloud Library is readable without Drive · connect only to upload or edit","pending");
       }
     }
   }
