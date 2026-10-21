@@ -256,6 +256,10 @@
             <div id="audioTitle" class="audio-title">No backing track loaded</div>
             <div id="audioModeNote" class="audio-note">Synth mode. Switch to Synced Backing after creating sync points.</div>
           </div>
+          <label class="audio-version-picker" for="audioVersionSelect">
+            <span>Audio Version</span>
+            <select id="audioVersionSelect" disabled><option value="">No backing track</option></select>
+          </label>
           <audio id="backingAudio" controls preload="metadata"></audio>
           <button id="audioStopBtn" type="button">Stop Audio</button>
         </div>
