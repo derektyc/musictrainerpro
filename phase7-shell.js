@@ -171,6 +171,10 @@
                     <button id="p77Synth" type="button">Synth</button>
                     <button id="p77Backing" type="button" disabled>Backing</button>
                   </div>
+                  <label id="p77AudioVersionWrap" class="p77-audio-version" hidden>
+                    <span>Audio</span>
+                    <select id="p77AudioVersion" disabled><option value="">No backing</option></select>
+                  </label>
                 </div>
               </div>
               <div id="p77PracticeProgress" class="p77-practice-progress" hidden><i id="p77PracticeProgressFill"></i></div>
@@ -436,11 +440,12 @@
     const listHtml=visible.map(song=>{
       const rel=libraryAssignmentsFor(song.id);
       const cloudState=libraryCloudLabel(song);
+      const versions=Array.isArray(song.audioVersions)?song.audioVersions.length:(song.audio?1:0);
+      const readiness=[song.interactive?"Score":"",song.pdf?"PDF":"",versions?(versions+" audio"):""].filter(Boolean).join(" · ");
       return '<button class="p76-song-row '+(selected&&song.id===selected.id?"selected":"")+'" data-p76-song="'+escapeHtml(song.id)+'" type="button">'+
         '<div class="p76-song-main"><strong>'+escapeHtml(song.title||"Untitled Song")+'</strong>'+
-        '<div class="p76-song-badges">'+libraryAssetBadge("Interactive",!!song.interactive)+libraryAssetBadge("PDF",!!song.pdf)+libraryAssetBadge("Backing",!!song.audio)+'</div></div>'+
-        '<div class="p76-song-side"><span class="p76-cloud '+cloudState.cls+'">'+escapeHtml(cloudState.text)+'</span>'+
-        '<span class="p76-song-assigned">'+(rel.length?rel.length+" assignment"+(rel.length===1?"":"s"):"Not assigned")+'</span></div></button>';
+        '<span class="p76-song-summary">'+escapeHtml(readiness||"No materials yet")+'</span></div>'+
+        '<div class="p76-song-side"><span class="p76-song-assigned">'+(rel.length?rel.length+" assigned":"")+'</span><b>›</b></div></button>';
     }).join("");
 
     let detail='<div class="p76-detail-empty"><div class="p76-detail-empty-icon">♫</div><strong>Select a song</strong><span>Choose a song from the catalogue to manage its teaching materials.</span></div>';
@@ -485,7 +490,7 @@
                 const asset=version&&version.asset||null;
                 const cached=asset&&asset.blob;
                 const active=version&&version.id===selected.activeAudioId;
-                return '<div class="p76-asset-row'+(active?' active':'')+'"><div class="p76-asset-icon">'+(active?'▶':'•')+'</div><div class="p76-asset-main"><strong>'+escapeHtml(version&&version.label||("Backing "+(index+1)))+'</strong><span>'+escapeHtml(asset&&asset.name||"Audio")+(active?' · selected':'')+'</span></div><button class="p7-secondary" data-p76-select-audio="'+escapeHtml(version&&version.id||"")+'" type="button">'+(active?'Selected':'Select')+'</button></div>';
+                return '<div class="p76-asset-row p76-audio-version-row"><div class="p76-asset-icon">•</div><div class="p76-asset-main"><strong>'+escapeHtml(version&&version.label||("Backing "+(index+1)))+'</strong><span>'+escapeHtml(asset&&asset.name||"Audio")+'</span></div></div>';
               }).join("")+'</div>'
             : '')+
           (selected.audio&&selected.audio.blob?'<div class="p76-audio-preview"><audio id="p76AudioPreview" controls preload="metadata"></audio></div>':'')+
@@ -499,24 +504,16 @@
     }
 
     root.innerHTML=
-      pageHead("Teaching materials","Song Library","Google Drive is the master Library. Files are cached on this device only when you open them.",
+      pageHead("Library","Song Library","Find a song, open it, and manage only what you need.",
         '<button id="p76AddSong" class="p7-primary" type="button">+ Add Song</button>')+
       '<div id="p76LibraryMessage" class="p76-message" aria-live="polite" '+(libraryState.message?"":"hidden")+'>'+escapeHtml(libraryState.message||"")+'</div>'+
-      '<div class="p76-stats">'+
-        metric("Songs",total,"In cloud catalogue")+
-        metric("Interactive",interactiveCount,"Ready for guided practice")+
-        metric("PDF",pdfCount,"Scores attached")+
-        metric("Backing",backingCount,"Tracks attached")+
-        metric("Assigned",assignedCount,"Used by assignments")+
+      '<div class="p76-simple-toolbar"><div class="p76-search-wrap"><input id="p76Search" type="search" placeholder="Search your library…" value="'+escapeHtml(libraryState.search)+'"></div>'+
+        '<div class="p76-filters">'+["all","assigned","incomplete"].map(key=>'<button data-p76-filter="'+key+'" class="'+(libraryState.filter===key?"active":"")+'" type="button">'+({all:"All Songs",assigned:"Assigned",incomplete:"Needs Files"}[key])+'</button>').join("")+'</div>'+
       '</div>'+
-      '<div class="p76-health"><div><strong>Library Health</strong><span>'+(missingInteractive?"⚠ "+missingInteractive+" without interactive score":"✓ All songs have interactive scores")+'</span></div>'+
-        '<span>'+(missingLocalAssigned?"⚠ "+missingLocalAssigned+" assigned song"+(missingLocalAssigned===1?" is":"s are")+" missing from the catalogue":"✓ Assigned songs are in the catalogue")+'</span>'+
-        '<span>'+(assignedNoPdf?"⚠ "+assignedNoPdf+" assigned without PDF":"✓ Assigned PDFs look good")+'</span>'+
-        '<span>'+(assignedNoBacking?"⚠ "+assignedNoBacking+" assigned without backing":"✓ Assigned backing tracks look good")+'</span></div>'+
-      '<div class="p76-toolbar"><div class="p76-search-wrap"><input id="p76Search" type="search" placeholder="Search songs…" value="'+escapeHtml(libraryState.search)+'"></div>'+
-        '<div class="p76-filters">'+["all","interactive","pdf","backing","assigned","incomplete"].map(key=>'<button data-p76-filter="'+key+'" class="'+(libraryState.filter===key?"active":"")+'" type="button">'+({all:"All",interactive:"Interactive",pdf:"PDF",backing:"Backing",assigned:"Assigned",incomplete:"Incomplete"}[key])+'</button>').join("")+'</div>'+
-        '<div class="p76-toolbar-actions"><button id="p76SyncDrive" class="p7-secondary" type="button">Sync Drive</button><button id="p76BulkAdd" class="p7-secondary" type="button">Add Files</button><button id="p76SaveZip" class="p7-secondary" type="button">Save ZIP</button><button id="p76LoadZip" class="p7-secondary" type="button">Import ZIP</button></div><input id="p76BulkFile" type="file" multiple hidden accept=".pdf,.gp,.gpx,.gp3,.gp4,.gp5,.gp6,.gp7,.gp8,.musicxml,.mxl,.xml,.mp3,.wav,application/pdf,application/xml,text/xml,audio/mpeg,audio/wav,audio/x-wav"></div>'+
-      '<div id="p76Dropzone" class="p76-dropzone">Drop Guitar Pro / MusicXML, PDF, MP3 or WAV files here — matching filenames are grouped, then synced to your Drive Library.</div>'+
+      '<details class="p76-library-tools"><summary>Library Tools</summary><div class="p76-library-tools-body">'+
+        '<div class="p76-toolbar-actions"><button id="p76SyncDrive" class="p7-secondary" type="button">Sync Drive</button><button id="p76BulkAdd" class="p7-secondary" type="button">Bulk Add Files</button><button id="p76SaveZip" class="p7-secondary" type="button">Save Backup</button><button id="p76LoadZip" class="p7-secondary" type="button">Import Backup</button></div>'+
+        '<div id="p76Dropzone" class="p76-dropzone">Drop score, PDF, MP3 or WAV files here to group and add them.</div>'+
+        '<input id="p76BulkFile" type="file" multiple hidden accept=".pdf,.gp,.gpx,.gp3,.gp4,.gp5,.gp6,.gp7,.gp8,.musicxml,.mxl,.xml,.mp3,.wav,application/pdf,application/xml,text/xml,audio/mpeg,audio/wav,audio/x-wav"></div></details>'+
       '<div class="p76-library-layout"><section id="p76Catalog" class="p76-catalog">'+
         '<div class="p76-catalog-head"><strong>'+visible.length+' song'+(visible.length===1?"":"s")+'</strong><span>'+escapeHtml(libraryState.filter==="all"?"All materials":libraryState.filter)+'</span></div>'+
         '<div class="p76-song-list">'+(listHtml||'<div class="p7-empty">'+(librarySongs.length?"No songs match this filter.":"Your library is empty. Add a song or drop files above.")+'</div>')+'</div></section>'+
@@ -1958,6 +1955,25 @@
     const mode=$("p77ModePill");
     if(mode) mode.textContent=backingActive?"Synced Backing":"Synth";
 
+    const audioVersion=$("p77AudioVersion"), audioWrap=$("p77AudioVersionWrap"), oldAudioVersion=$("audioVersionSelect");
+    if(audioVersion&&audioWrap){
+      const options=oldAudioVersion?Array.from(oldAudioVersion.options||[]):[];
+      const signature=options.map(o=>o.value+"|"+o.textContent).join("\n");
+      if(audioVersion.dataset.optionsSignature!==signature){
+        audioVersion.innerHTML="";
+        options.forEach(o=>{
+          const copy=document.createElement("option");
+          copy.value=o.value;
+          copy.textContent=o.textContent;
+          audioVersion.appendChild(copy);
+        });
+        audioVersion.dataset.optionsSignature=signature;
+      }
+      if(oldAudioVersion) audioVersion.value=oldAudioVersion.value;
+      audioVersion.disabled=active||!oldAudioVersion||oldAudioVersion.disabled||options.length<1;
+      audioWrap.hidden=!oldAudioVersion||options.length<1||(!options.some(o=>o.value));
+    }
+
     const pdfProxy=$("p77OpenPdf");
     if(pdfProxy) pdfProxy.disabled=!pdf||pdf.disabled;
 
@@ -1996,7 +2012,7 @@
 
   function bindPracticeChrome(){
     const play=$("p77Play"), restart=$("p77Restart"), loop=$("p77Loop"), sessionButton=$("p77Session");
-    const speed=$("p77Speed"), zoom=$("p77Zoom"), synth=$("p77Synth"), backing=$("p77Backing"), pdf=$("p77OpenPdf");
+    const speed=$("p77Speed"), zoom=$("p77Zoom"), synth=$("p77Synth"), backing=$("p77Backing"), pdf=$("p77OpenPdf"), audioVersion=$("p77AudioVersion");
 
     if(play) play.onclick=()=>practiceClick("playBtn");
     if(loop) loop.onclick=()=>{if(!practiceSessionActive())practiceClick("loopBtn");};
@@ -2023,13 +2039,21 @@
     };
     if(synth) synth.onclick=()=>{if(!practiceSessionActive())practiceClick("synthModeBtn");setTimeout(syncPracticeChrome,80);};
     if(backing) backing.onclick=()=>{if(!practiceSessionActive())practiceClick("backingModeBtn");setTimeout(syncPracticeChrome,80);};
+    if(audioVersion) audioVersion.onchange=()=>{
+      if(practiceSessionActive()) return;
+      const old=$("audioVersionSelect");
+      if(!old||old.disabled) return;
+      old.value=audioVersion.value;
+      old.dispatchEvent(new Event("change",{bubbles:true}));
+      setTimeout(syncPracticeChrome,120);
+    };
     if(pdf) pdf.onclick=()=>practiceClick("openPdfBtn");
 
     if(practiceChromeObserver){try{practiceChromeObserver.disconnect();}catch(error){}}
     practiceChromeObserver=new MutationObserver(()=>syncPracticeChrome());
     [
       "viewerTitle","viewerMeta","playBtn","loopBtn","speed","speedValue","zoom","zoomValue","position",
-      "synthModeBtn","backingModeBtn","openPdfBtn","practiceStartBtn","practiceStopBtn","practiceRetryBtn","practiceModeSection","practiceProgressFill"
+      "synthModeBtn","backingModeBtn","audioVersionSelect","openPdfBtn","practiceStartBtn","practiceStopBtn","practiceRetryBtn","practiceModeSection","practiceProgressFill"
     ].forEach(id=>{
       const node=$(id);
       if(node) practiceChromeObserver.observe(node,{attributes:true,childList:true,characterData:true,subtree:true});
