@@ -515,7 +515,10 @@
 
   async function uploadAsset(asset,existing,parentId,publicRead){
     if(!asset||!asset.blob) return null;
-    if(existing&&existing.provider==="google-drive"&&existing.revision===assetRevision(asset)) return existing;
+    if(existing&&existing.provider==="google-drive"&&existing.revision===assetRevision(asset)){
+      if(publicRead!==false && existing.fileId) await makeAnyoneReader(existing.fileId);
+      return existing;
+    }
     const file=existing&&existing.provider==="google-drive"
       ? await updateDriveAsset(existing,asset,parentId,publicRead)
       : await createDriveAsset(asset,parentId,publicRead);
@@ -702,21 +705,10 @@
   }
 
   async function downloadPrivateDriveAsset(meta){
+    // Legacy helper retained for old callers. Master Library files are now public-link
+    // readable, so normal reads should use downloadDriveAsset() without OAuth.
     if(!meta||!meta.fileId) return null;
-    const headers={};
-    if(meta.resourceKey) headers["X-Goog-Drive-Resource-Keys"]=meta.fileId+"/"+meta.resourceKey;
-    const response=await driveFetch(
-      "https://www.googleapis.com/drive/v3/files/"+encodeURIComponent(meta.fileId)+"?alt=media",
-      {headers}
-    );
-    const blob=await response.blob();
-    return {
-      name:meta.name||"file",
-      mime:meta.mime||blob.type||"",
-      size:Number(meta.size||blob.size||0),
-      updatedAt:Number(meta.updatedAt||Date.now()),
-      blob
-    };
+    return await downloadDriveAsset(meta);
   }
 
   async function publishLibrarySong(songId){
@@ -751,13 +743,13 @@
 
       for(const kind of ["interactive","pdf"]){
         if(song[kind]&&song[kind].blob){
-          libraryAssets[kind]=await uploadAsset(song[kind],oldMaster[kind]||null,folderId,false);
+          libraryAssets[kind]=await uploadAsset(song[kind],oldMaster[kind]||null,folderId,true);
         }else if(oldMaster[kind]){
           libraryAssets[kind]=oldMaster[kind];
         }else if(old.assets&&old.assets[kind]){
           const legacyAsset=await downloadDriveAsset(old.assets[kind]);
           libraryAssets[kind]=legacyAsset
-            ? await uploadAsset(legacyAsset,null,folderId,false)
+            ? await uploadAsset(legacyAsset,null,folderId,true)
             : null;
         }else{
           libraryAssets[kind]=null;
@@ -769,7 +761,7 @@
         const oldVersion=oldAudioMap.get(version.id);
         const oldAsset=oldVersion&&oldVersion.asset||null;
         const remoteAsset=version.asset&&version.asset.blob
-          ? await uploadAsset(version.asset,oldAsset,folderId,false)
+          ? await uploadAsset(version.asset,oldAsset,folderId,true)
           : oldAsset;
         if(remoteAsset){
           libraryAudioVersions.push({
@@ -910,15 +902,8 @@
       }
       if(local&&sameAsset(local[kind],remote)) return local[kind];
 
-      if(isMasterAsset(meta,kind)){
-        try{await ensureDriveToken();}
-        catch(error){throw new Error("Reconnect Google Drive to open this Library file.");}
-      }
-
       emit("syncing","Downloading "+(meta.title||"song")+" "+(kind==="interactive"?"score":kind==="pdf"?"PDF":"backing track")+"…");
-      const asset=isMasterAsset(meta,kind)
-        ? await downloadPrivateDriveAsset(remote)
-        : await downloadDriveAsset(remote);
+      const asset=await downloadDriveAsset(remote);
 
       local=local||{
         id:songId,
@@ -1023,10 +1008,8 @@
       let version=versions.find(v=>v.id===versionId);
       if(version&&sameAsset(version.asset,remote.asset)) return version.asset;
 
-      try{await ensureDriveToken();}
-      catch(error){throw new Error("Reconnect Google Drive to load this backing-track version.");}
       emit("syncing","Downloading "+(remote.label||remote.asset.name||"backing track")+"…");
-      const asset=await downloadPrivateDriveAsset(remote.asset);
+      const asset=await downloadDriveAsset(remote.asset);
 
       let nextVersions=localAudioVersions(local).slice();
       const index=nextVersions.findIndex(v=>v.id===versionId);
