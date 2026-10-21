@@ -843,6 +843,7 @@
 
   function selectSong(id) {
     if (selectedSongId === id) return;
+    pauseBackingCursorDriver(true);
     selectedSongId = id;
     localStorage.setItem("dtmtp-selected-song", id);
     backingModeActive = false;
@@ -1640,6 +1641,13 @@
   function freezeBackingCursorAtStart() {
     if (!api || !api.score || !backingSyncMap.length) return;
     if (!backingPreRollFrozen) {
+      // Capture the audible synth volume BEFORE muting for count-in. Otherwise
+      // the later cursor-driver start can accidentally remember 0 as the volume
+      // to restore when switching back to Synth.
+      if (!backingCursorDriverActive) {
+        const currentVolume = Number(api.masterVolume);
+        if (Number.isFinite(currentVolume) && currentVolume > 0) synthVolumeBeforeBacking = currentVolume;
+      }
       pauseBackingCursorDriver(false);
       try { api.masterVolume = 0; } catch (error) {}
       try { api.tickPosition = backingSyncMap[0].scoreTick; } catch (error) {}
@@ -1650,10 +1658,9 @@
   function startBackingCursorDriver() {
     if (!backingModeActive || !api || !playerReady) return;
     try {
-      if (!backingCursorDriverActive) {
-        synthVolumeBeforeBacking = Number.isFinite(Number(api.masterVolume))
-          ? Number(api.masterVolume)
-          : 1;
+      if (!backingCursorDriverActive && !backingPreRollFrozen) {
+        const currentVolume = Number(api.masterVolume);
+        if (Number.isFinite(currentVolume) && currentVolume > 0) synthVolumeBeforeBacking = currentVolume;
       }
       api.masterVolume = 0;
       const audioMs = (Number(el.audio.currentTime) || 0) * 1000;
@@ -1677,7 +1684,11 @@
     } catch (error) {}
     backingCursorDriverActive = false;
     if (restoreVolume) {
-      try { api.masterVolume = synthVolumeBeforeBacking; } catch (error) {}
+      const restore = Number.isFinite(Number(synthVolumeBeforeBacking)) && Number(synthVolumeBeforeBacking) > 0
+        ? Number(synthVolumeBeforeBacking)
+        : 1;
+      try { api.masterVolume = restore; } catch (error) {}
+      synthVolumeBeforeBacking = restore;
       backingPreRollFrozen = false;
     }
   }
@@ -1927,6 +1938,7 @@
     resetTransportState();
     stopBackingSyncTimer();
     el.audio.pause();
+    pauseBackingCursorDriver(true);
     backingModeActive = false;
     backingLoopEnabled = false;
     activeInteractiveSongId = song.id;
@@ -1973,6 +1985,7 @@
         : 0;
     }
     resetTransportState();
+    pauseBackingCursorDriver(true);
     backingModeActive = false;
     backingLoopEnabled = false;
     stopBackingAudio();
