@@ -425,6 +425,7 @@
     const assignedNoPdf=librarySongs.filter(s=>assignedIds.has(s.id)&&!s.pdf).length;
     const assignedNoBacking=librarySongs.filter(s=>assignedIds.has(s.id)&&!s.audio).length;
 
+    if(!["all","assigned","incomplete"].includes(libraryState.filter)) libraryState.filter="all";
     const visible=librarySongs.filter(s=>libraryFilterMatch(s)&&librarySearchMatch(s));
     const selected=librarySongs.find(s=>s.id===libraryState.selectedId)||null;
     const cloud=selected?libraryCloudLabel(selected):null;
