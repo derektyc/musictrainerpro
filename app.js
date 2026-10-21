@@ -73,6 +73,7 @@
     audioModeNote: $("audioModeNote"),
     audio: $("backingAudio"),
     audioTitle: $("audioTitle"),
+    audioVersion: $("audioVersionSelect"),
     audioStop: $("audioStopBtn"),
     toast: $("toast")
   };
@@ -86,6 +87,7 @@
   let scorePlaying = false;
   let backingUrl = "";
   let loadedAudioSongId = "";
+  let loadedAudioVersionId = "";
   let backingModeActive = false;
   let backingSyncTimer = null;
   let backingLoopEnabled = false;
@@ -501,18 +503,130 @@
     });
   }
 
+
+  function audioVersionLabel(name) {
+    const base=String(name||"Backing track").replace(/\.[^.]+$/,"");
+    const match=base.match(/\(([^)]+)\)\s*(?:with vocals)?\s*$/i);
+    if(match){
+      const inside=match[1].trim();
+      const vocals=/with vocals/i.test(base)?" · Vocals":"";
+      return inside.replace(/\bbt\b/ig,"Backing").replace(/\bclick\b/ig,"Click").replace(/\bno click\b/ig,"No Click").replace(/\bfull\b/ig,"Full Mix")+vocals;
+    }
+    const suffix=base.match(/(?:[-–—]\s*)?((?:bt|backing|full).*)$/i);
+    return suffix?suffix[1].trim():base;
+  }
+
+  function audioGroupingTitle(fileName) {
+    return String(fileName||"")
+      .replace(/\.[^.]+$/,"")
+      .replace(/\s*\([^)]*(?:bt|backing|full|click|vocal)[^)]*\)\s*(?:with vocals)?\s*$/i,"")
+      .replace(/\s+(?:with vocals|no vocals)$/i,"")
+      .trim();
+  }
+
+  function normalizeAudioVersions(song) {
+    if(!song) return song;
+    let versions=Array.isArray(song.audioVersions)?song.audioVersions.filter(Boolean):[];
+    if(!versions.length && song.audio){
+      versions=[{
+        id:"legacy-"+song.id,
+        label:audioVersionLabel(song.audio.name),
+        asset:song.audio,
+        syncPoints:normalizeSyncPoints(song.syncPoints)
+      }];
+    }
+    versions=versions.map((v,index)=>({
+      id:String(v.id||("audio-"+index+"-"+song.id)),
+      label:String(v.label||audioVersionLabel(v.asset&&v.asset.name)),
+      asset:v.asset||null,
+      syncPoints:normalizeSyncPoints(v.syncPoints)
+    })).filter(v=>v.asset);
+
+    song.audioVersions=versions;
+    if(versions.length){
+      if(!song.activeAudioId || !versions.some(v=>v.id===song.activeAudioId)) song.activeAudioId=versions[0].id;
+      const active=versions.find(v=>v.id===song.activeAudioId)||versions[0];
+      song.activeAudioId=active.id;
+      song.audio=active.asset;
+      song.syncPoints=normalizeSyncPoints(active.syncPoints);
+    }else{
+      song.activeAudioId="";
+      song.audio=null;
+      song.syncPoints=[];
+    }
+    return song;
+  }
+
+  function persistActiveAudioAlias(song) {
+    if(!song) return song;
+    normalizeAudioVersions(song);
+    const active=song.audioVersions.find(v=>v.id===song.activeAudioId);
+    if(active){
+      active.asset=song.audio||active.asset;
+      active.syncPoints=normalizeSyncPoints(song.syncPoints);
+      active.label=active.label||audioVersionLabel(active.asset&&active.asset.name);
+    }
+    return song;
+  }
+
+  function activeAudioVersion(song) {
+    normalizeAudioVersions(song);
+    return song&&song.audioVersions.find(v=>v.id===song.activeAudioId)||null;
+  }
+
+  function addAudioVersion(song,file) {
+    normalizeAudioVersions(song);
+    const asset=makeAsset(file);
+    const existing=song.audioVersions.find(v=>v.asset&&String(v.asset.name||"")===String(file.name||""));
+    if(existing){
+      existing.asset=asset;
+      existing.label=audioVersionLabel(file.name);
+      existing.syncPoints=[];
+      song.activeAudioId=existing.id;
+    }else{
+      const version={id:makeId(),label:audioVersionLabel(file.name),asset,syncPoints:[]};
+      song.audioVersions.push(version);
+      song.activeAudioId=version.id;
+    }
+    normalizeAudioVersions(song);
+    return song;
+  }
+
+  async function selectAudioVersion(songId,versionId) {
+    const song=await getSong(songId);
+    if(!song) return null;
+    normalizeAudioVersions(song);
+    const version=song.audioVersions.find(v=>v.id===versionId);
+    if(!version) return song;
+    stopBackingAudio();
+    song.activeAudioId=version.id;
+    song.audio=version.asset;
+    song.syncPoints=normalizeSyncPoints(version.syncPoints);
+    await putSong(song);
+    await refreshCache();
+    const refreshed=await getSong(songId);
+    if(backingModeActive&&refreshed){
+      await ensureBackingAudio(refreshed);
+      applySongSyncPoints(refreshed);
+      syncCursorFromBacking();
+    }
+    return refreshed;
+  }
+
   async function allSongs() {
     const tx = db.transaction(SONG_STORE, "readonly");
-    return await idbRequest(tx.objectStore(SONG_STORE).getAll());
+    const songs=await idbRequest(tx.objectStore(SONG_STORE).getAll());
+    return songs.map(normalizeAudioVersions);
   }
 
   async function getSong(id) {
     if (!id) return null;
     const tx = db.transaction(SONG_STORE, "readonly");
-    return await idbRequest(tx.objectStore(SONG_STORE).get(id));
+    return normalizeAudioVersions(await idbRequest(tx.objectStore(SONG_STORE).get(id)));
   }
 
   async function putSong(song) {
+    persistActiveAudioAlias(song);
     song.updatedAt = Date.now();
     const tx = db.transaction(SONG_STORE, "readwrite");
     await idbRequest(tx.objectStore(SONG_STORE).put(song));
@@ -838,6 +952,7 @@
     el.audio.load();
     revokeBackingUrl();
     loadedAudioSongId = "";
+    loadedAudioVersionId = "";
     el.audioTitle.textContent = "No backing track loaded";
     updateSyncCurrentTime();
   }
@@ -857,8 +972,10 @@
   }
 
   async function ensureBackingAudio(song) {
-    if (!song || !song.audio || !song.audio.blob) throw new Error("This song has no backing track.");
-    if (loadedAudioSongId === song.id && el.audio.src) {
+    normalizeAudioVersions(song);
+    const version=activeAudioVersion(song);
+    if (!song || !version || !song.audio || !song.audio.blob) throw new Error("This song has no backing track.");
+    if (loadedAudioSongId === song.id && loadedAudioVersionId === version.id && el.audio.src) {
       await waitForAudioMetadata();
       return;
     }
@@ -867,8 +984,9 @@
     revokeBackingUrl();
     backingUrl = URL.createObjectURL(song.audio.blob);
     loadedAudioSongId = song.id;
+    loadedAudioVersionId = version.id;
     el.audio.src = backingUrl;
-    el.audioTitle.textContent = song.audio.name;
+    el.audioTitle.textContent = (version.label||"Backing track")+" · "+song.audio.name;
     el.audio.load();
     await waitForAudioMetadata();
     updateSyncCurrentTime();
