@@ -2178,7 +2178,7 @@
     buildNav();
 
     const sub=document.querySelector(".topbar .sub");
-    if(sub) sub.textContent="Phase 7.9 · Cloud Library";
+    if(sub) sub.textContent="Phase 8.1 · Practice Requirements";
 
     let desired="";
     try{desired=localStorage.getItem(ROUTE_KEY)||"";}catch(error){}
