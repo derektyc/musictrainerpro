@@ -105,6 +105,7 @@
   let lookAheadLastTarget = -1;
   let toastTimer = null;
   let pendingMusicXmlSystemBreaks = [];
+  let pendingMusicXmlGroupedPartPairs = 0;
   let pendingInteractiveIsMusicXml = false;
 
   function setStatus(text, tone) {
@@ -234,22 +235,96 @@
     return model;
   }
 
+  function museScoreNotationTabPairs(doc) {
+    const partList=Array.from(doc.getElementsByTagName("part-list"))[0];
+    if(!partList) return [];
+    const scoreParts=Array.from(partList.children||[]).filter(n=>n.localName==="score-part");
+    const partNodes=Array.from(doc.getElementsByTagName("part"));
+    const byId=new Map(partNodes.map(p=>[String(p.getAttribute("id")||""),p]));
+
+    const info=scoreParts.map(sp=>{
+      const id=String(sp.getAttribute("id")||"");
+      const part=byId.get(id)||null;
+      const measures=part?Array.from(part.children||[]).filter(n=>n.localName==="measure"):[];
+      const numbers=measures.map(m=>String(m.getAttribute("number")||""));
+      const clefs=part?Array.from(part.getElementsByTagName("sign")).map(n=>String(n.textContent||"").trim().toUpperCase()):[];
+      const isTab=clefs.includes("TAB");
+      const nameNode=Array.from(sp.getElementsByTagName("part-name"))[0];
+      const instrumentNode=Array.from(sp.getElementsByTagName("instrument-name"))[0];
+      const soundNode=Array.from(sp.getElementsByTagName("instrument-sound"))[0];
+      const descriptor=[nameNode&&nameNode.textContent,instrumentNode&&instrumentNode.textContent,soundNode&&soundNode.textContent]
+        .filter(Boolean).join(" ").toLowerCase();
+      const guitar=/guitar|pluck\.guitar/.test(descriptor);
+      return {sp,id,part,measures,numbers,isTab,guitar};
+    });
+
+    const pairs=[];
+    for(let i=0;i<info.length-1;i++){
+      const a=info[i], b=info[i+1];
+      if(!a.part||!b.part||!a.guitar||!b.guitar||a.isTab===b.isTab) continue;
+      if(!a.measures.length||a.measures.length!==b.measures.length) continue;
+      if(a.numbers.join("|")!==b.numbers.join("|")) continue;
+      pairs.push([a,b]);
+      i++;
+    }
+    return pairs;
+  }
+
+  function injectMuseScoreNotationTabGroups(doc) {
+    const partList=Array.from(doc.getElementsByTagName("part-list"))[0];
+    if(!partList) return 0;
+    const pairs=museScoreNotationTabPairs(doc);
+    if(!pairs.length) return 0;
+
+    const existingGroups=Array.from(partList.children||[]).filter(n=>n.localName==="part-group");
+    let nextNumber=1;
+    existingGroups.forEach(g=>{
+      const n=parseInt(g.getAttribute("number")||"0",10);
+      if(Number.isFinite(n)) nextNumber=Math.max(nextNumber,n+1);
+    });
+
+    let added=0;
+    pairs.forEach(pair=>{
+      const first=pair[0].sp, second=pair[1].sp;
+      const ns=partList.namespaceURI||doc.documentElement.namespaceURI||null;
+      const make=(name)=>ns?doc.createElementNS(ns,name):doc.createElement(name);
+      const start=make("part-group");
+      start.setAttribute("type","start");
+      start.setAttribute("number",String(nextNumber));
+      const groupName=make("group-name");
+      groupName.textContent="Guitar";
+      start.appendChild(groupName);
+
+      const stop=make("part-group");
+      stop.setAttribute("type","stop");
+      stop.setAttribute("number",String(nextNumber));
+
+      partList.insertBefore(start,first);
+      if(second.nextSibling) partList.insertBefore(stop,second.nextSibling);
+      else partList.appendChild(stop);
+      nextNumber++;
+      added++;
+    });
+    return added;
+  }
+
   function normalizePercussionMusicXml(xmlText) {
     const source = String(xmlText || "");
-    if (!source.trim()) return { xml: source, changed: false, restoredNoteheads: 0, systemBreaks: [] };
+    if (!source.trim()) return { xml: source, changed: false, restoredNoteheads: 0, groupedPartPairs: 0, systemBreaks: [] };
 
     let doc;
     try {
       doc = new DOMParser().parseFromString(source, "application/xml");
     } catch (error) {
-      return { xml: source, changed: false, restoredNoteheads: 0, systemBreaks: [] };
+      return { xml: source, changed: false, restoredNoteheads: 0, groupedPartPairs: 0, systemBreaks: [] };
     }
 
     if (!doc || doc.getElementsByTagName("parsererror").length) {
-      return { xml: source, changed: false, restoredNoteheads: 0, systemBreaks: [] };
+      return { xml: source, changed: false, restoredNoteheads: 0, groupedPartPairs: 0, systemBreaks: [] };
     }
 
     const systemBreaks = musicXmlSystemBreaks(doc);
+    const groupedPartPairs = injectMuseScoreNotationTabGroups(doc);
     let restoredNoteheads = 0;
     const notes = Array.from(doc.getElementsByTagName("note"));
     const insertBeforeNames = new Set(["notehead-text","staff","beam","notations","lyric","play","listen"]);
@@ -275,8 +350,8 @@
       restoredNoteheads++;
     });
 
-    if (!restoredNoteheads) {
-      return { xml: source, changed: false, restoredNoteheads: 0, systemBreaks };
+    if (!restoredNoteheads && !groupedPartPairs) {
+      return { xml: source, changed: false, restoredNoteheads: 0, groupedPartPairs: 0, systemBreaks };
     }
 
     try {
@@ -284,10 +359,11 @@
         xml: new XMLSerializer().serializeToString(doc),
         changed: true,
         restoredNoteheads,
+        groupedPartPairs,
         systemBreaks
       };
     } catch (error) {
-      return { xml: source, changed: false, restoredNoteheads: 0, systemBreaks };
+      return { xml: source, changed: false, restoredNoteheads: 0, groupedPartPairs: 0, systemBreaks };
     }
   }
 
@@ -353,6 +429,7 @@
       return {
         bytes: rawBytes,
         percussionFixes: 0,
+        groupedPartPairs: normalized.groupedPartPairs || 0,
         systemBreaks: normalized.systemBreaks || [],
         isMusicXml: true
       };
@@ -361,6 +438,7 @@
     return {
       bytes: new TextEncoder().encode(normalized.xml),
       percussionFixes: normalized.restoredNoteheads,
+      groupedPartPairs: normalized.groupedPartPairs || 0,
       systemBreaks: normalized.systemBreaks || [],
       isMusicXml: true
     };
@@ -1893,6 +1971,9 @@
       layoutMode: "page",
       scale: 1
     },
+    importer: {
+      mergePartGroupsInMusicXml: true
+    },
     player: {
       enablePlayer: true,
       enableUserInteraction: true,
@@ -2087,6 +2168,7 @@
     try {
       const prepared = await prepareInteractiveForAlphaTab(song.interactive);
       pendingInteractiveIsMusicXml = !!prepared.isMusicXml;
+      pendingMusicXmlGroupedPartPairs = Number(prepared.groupedPartPairs)||0;
       pendingMusicXmlSystemBreaks = Array.isArray(prepared.systemBreaks) ? prepared.systemBreaks.slice() : [];
       const accepted = api.load(prepared.bytes);
       if (!accepted) {
@@ -2094,8 +2176,11 @@
       }
       el.viewerTitle.textContent = song.title;
       el.viewerMeta.textContent = "Interactive score · " + song.interactive.name +
+        (prepared.groupedPartPairs ? " · Notation + TAB paired" : "") +
         (prepared.percussionFixes ? " · Drum notation compatibility applied" : "");
-      if (prepared.percussionFixes) {
+      if (prepared.groupedPartPairs) {
+        toast("MusicXML compatibility applied · paired standard notation with TAB.");
+      } else if (prepared.percussionFixes) {
         toast("Drum score fixed · restored " + prepared.percussionFixes + " normal notehead" + (prepared.percussionFixes === 1 ? "" : "s") + ".");
       }
     } catch (error) {
@@ -2114,6 +2199,7 @@
 
   function loadSample() {
     pendingInteractiveIsMusicXml = false;
+    pendingMusicXmlGroupedPartPairs = 0;
     pendingMusicXmlSystemBreaks = [];
     if (api && api.settings && api.settings.display) {
       api.settings.display.systemsLayoutMode = alphaTab.SystemsLayoutMode
@@ -2139,8 +2225,10 @@
   api.scoreLoaded.on((score) => {
     naturalScoreEndMs = 0;
     const isMusicXml = pendingInteractiveIsMusicXml;
+    const groupedPartPairs = pendingMusicXmlGroupedPartPairs;
     const forcedSystemBreaks = pendingMusicXmlSystemBreaks.slice();
     pendingInteractiveIsMusicXml = false;
+    pendingMusicXmlGroupedPartPairs = 0;
     pendingMusicXmlSystemBreaks = [];
     if (forcedSystemBreaks.length && score && Array.isArray(score.tracks)) {
       score.tracks.forEach((track) => {
@@ -2178,6 +2266,11 @@
     el.loopStart.value = "1";
     el.loopEnd.value = String(Math.min(4, Math.max(1, barCount)));
     renderTrackButtons(score);
+    // If alphaTab did not collapse a detected notation/TAB pair into one multi-staff
+    // track, render the paired tracks together rather than silently showing only P1.
+    if(groupedPartPairs>0 && score.tracks && score.tracks.length>1){
+      try{api.renderTracks(score.tracks.slice(0,Math.min(score.tracks.length,groupedPartPairs*2)));}catch(error){}
+    }
     el.applyLoop.disabled = false;
     el.clearLoop.disabled = false;
     el.syncBar.max = String(Math.max(1, barCount));
