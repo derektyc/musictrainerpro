@@ -246,3 +246,36 @@ Runtime-isolated checks passed:
 - Inverse tick mapping returns audio 19s for tick 1920.
 - All main JavaScript files parse successfully.
 - index.html references app.js?v=20261020-sync3.
+
+
+## Real-file backing sync regression — 2026-10-21
+
+Files tested:
+- Rockschool Drums Debut - Yellow.mxl
+- Yellow test.mp3
+
+Measured score/audio facts:
+- MusicXML: 19 measures, 4/4, tempo 87 BPM.
+- Natural score duration: approximately 52.414 seconds.
+- MP3 duration: 64.287 seconds.
+- The MP3 begins with four isolated count-in clicks around 0.12s, 0.81s, 1.50s and 2.19s.
+- Sustained musical audio begins at approximately 2.850 seconds.
+- The backing track fades out after the score finishes and contains several seconds of trailing silence.
+
+Previous failure reproduced mathematically:
+- Using file duration minus score duration gives about 11.87 seconds.
+- Snapping that gap to score beats incorrectly suggests roughly a 17-beat intro.
+- Using the full 64.287-second MP3 as the final sync anchor also stretches the score into the fade/silence tail.
+
+Fix validation against the uploaded files:
+- New sustained-audio detector returns 2.850 seconds for the score downbeat.
+- 19 bars at 87 BPM = approximately 52.414 seconds.
+- Expected musical end = 2.850 + 52.414 = approximately 55.264 seconds.
+- Auto Sync now uses that musical endpoint instead of the raw 64.287-second MP3 duration when a long trailing tail is present.
+- External backing sync points no longer modify alphaTab's own internal tempo map; the app uses its independent audio-time → score-tick mapping instead.
+- All main JavaScript files parse successfully.
+- index.html references app.js?v=20261021-sync4.
+
+Title regression:
+- The uploaded interactive filename is "Rockschool Drums Debut - Yellow.mxl".
+- Exact-filename title behavior therefore resolves to "Rockschool Drums Debut - Yellow", regardless of the embedded MusicXML work title.
