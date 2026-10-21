@@ -94,6 +94,7 @@
   let backingSyncMap = [];
   let backingCursorDriverActive = false;
   let synthVolumeBeforeBacking = 1;
+  let naturalScoreEndMs = 0;
   let toastTimer = null;
   let pendingMusicXmlSystemBreaks = [];
   let pendingInteractiveIsMusicXml = false;
@@ -1003,6 +1004,90 @@
     return copy.length % 2 ? copy[mid] : (copy[mid - 1] + copy[mid]) / 2;
   }
 
+  async function detectSustainedMusicStart(song, beatMs) {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass || !song || !song.audio || !song.audio.blob) return null;
+
+    let context = null;
+    try {
+      context = new AudioContextClass();
+      const bytes = await song.audio.blob.arrayBuffer();
+      const decoded = await context.decodeAudioData(bytes.slice(0));
+      const sampleRate = decoded.sampleRate;
+      const seconds = Math.min(12, decoded.duration);
+      const sampleLimit = Math.max(1, Math.floor(seconds * sampleRate));
+      const frameMs = 50;
+      const frameSize = Math.max(64, Math.floor(sampleRate * frameMs / 1000));
+      const rms = [];
+
+      for (let start = 0; start < sampleLimit; start += frameSize) {
+        const end = Math.min(sampleLimit, start + frameSize);
+        let sumSquares = 0, samples = 0;
+        for (let ch = 0; ch < decoded.numberOfChannels; ch++) {
+          const data = decoded.getChannelData(ch);
+          for (let i = start; i < end; i += 4) {
+            const v = data[i] || 0;
+            sumSquares += v * v;
+            samples++;
+          }
+        }
+        rms.push(samples ? Math.sqrt(sumSquares / samples) : 0);
+      }
+
+      if (rms.length < 20) return null;
+      const ordered = rms.slice().sort((a,b) => a-b);
+      const p70 = ordered[Math.min(ordered.length - 1, Math.floor(ordered.length * 0.70))] || 0;
+      const threshold = Math.max(0.002, p70 * 0.12);
+      const nextFrames = Math.max(4, Math.round(800 / frameMs));
+      const prevFrames = Math.max(4, Math.round(500 / frameMs));
+
+      // A real musical entrance remains active; count-in clicks are strong but isolated.
+      // Find the first frame where activity becomes sustained after a mostly quiet window.
+      for (let i = prevFrames; i + nextFrames < rms.length; i++) {
+        if (rms[i] <= threshold) continue;
+        const next = rms.slice(i, i + nextFrames);
+        const previous = rms.slice(i - prevFrames, i);
+        const nextOccupancy = next.filter((v) => v > threshold).length / next.length;
+        const previousOccupancy = previous.filter((v) => v > threshold).length / previous.length;
+        const nextOrdered = next.slice().sort((a,b) => a-b);
+        const nextMedian = nextOrdered[Math.floor(nextOrdered.length / 2)] || 0;
+
+        if (nextOccupancy >= 0.75 && previousOccupancy <= 0.35 && nextMedian > threshold * 2) {
+          // Refine to the sharpest rise in the next 200 ms so encoder delay / ramp-up
+          // does not place bar 1 slightly before the real downbeat.
+          let best = i;
+          let bestRise = -Infinity;
+          const refineEnd = Math.min(rms.length, i + Math.max(2, Math.round(200 / frameMs)));
+          for (let j = i; j < refineEnd; j++) {
+            const rise = rms[j] - (j > 0 ? rms[j - 1] : 0);
+            if (rise > bestRise) {
+              bestRise = rise;
+              best = j;
+            }
+          }
+          const offsetMs = best * frameMs;
+          const beats = beatMs > 0 ? Math.max(0, Math.round(offsetMs / beatMs)) : 0;
+          return {offsetMs, beats, method:"sustained-music-start", confidence:0.97};
+        }
+      }
+
+      // If the track is already continuously active from the opening, it has no pre-roll.
+      const opening = rms.slice(0, nextFrames);
+      const openingOccupancy = opening.filter((v) => v > threshold).length / Math.max(1, opening.length);
+      if (openingOccupancy >= 0.75) {
+        return {offsetMs:0, beats:0, method:"music-from-start", confidence:0.95};
+      }
+      return null;
+    } catch (error) {
+      console.warn("Could not detect sustained music start", error);
+      return null;
+    } finally {
+      if (context && typeof context.close === "function") {
+        try { await context.close(); } catch (error) {}
+      }
+    }
+  }
+
   async function detectClickCountIn(song, beatMs) {
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
     if (!AudioContextClass || !song || !song.audio || !song.audio.blob || !beatMs) return null;
@@ -1088,41 +1173,30 @@
   }
 
   async function detectBackingStartOffset(song) {
-    const audioDurationMs = Math.max(0, (Number(el.audio.duration) || 0) * 1000);
-    const scoreDurationMs = Math.max(0, Number(api && api.endTime) || 0);
     const bpm = Math.max(1, Number(api && api.score && api.score.tempo) || 120);
     const beatMs = 60000 / bpm;
-    const durationGap = audioDurationMs - scoreDurationMs;
-    let durationCandidate = null;
 
-    if (durationGap >= beatMs * 0.55 && durationGap <= beatMs * 12.5) {
-      const beats = Math.max(1, Math.round(durationGap / beatMs));
-      const snapped = beats * beatMs;
-      if (beats <= 12 && Math.abs(durationGap - snapped) <= Math.max(180, beatMs * 0.28)) {
-        durationCandidate = {
-          offsetMs: Math.max(0, Math.round(snapped)),
-          beats,
-          method:"duration-match",
-          confidence:0.9
-        };
-      }
-    }
+    // Prefer the transition from isolated count-in clicks to sustained musical audio.
+    // File duration is deliberately NOT the primary detector because commercial
+    // backing tracks often contain reverb tails and several seconds of encoded silence.
+    const sustained = await detectSustainedMusicStart(song, beatMs);
+    if (sustained) return sustained;
 
+    // Fallback for sparse arrangements where the musical entrance is not sustained.
     const clickCandidate = await detectClickCountIn(song, beatMs);
-    if (durationCandidate && clickCandidate) {
-      if (Math.abs(durationCandidate.offsetMs - clickCandidate.offsetMs) <= Math.max(220, beatMs * 0.4)) {
-        return {...durationCandidate, method:"duration+click", confidence:0.98};
-      }
-      return durationCandidate;
-    }
-    return durationCandidate || clickCandidate || {offsetMs:0,beats:0,method:"none",confidence:0};
+    if (clickCandidate && clickCandidate.beats <= 8) return clickCandidate;
+
+    return {offsetMs:0,beats:0,method:"none",confidence:0};
   }
 
   function applySongSyncPoints(song) {
     if (!api || !api.score || !song) return false;
     const points = normalizeSyncPoints(song.syncPoints);
     try {
-      api.score.applyFlatSyncPoints(points);
+      // External MP3/WAV playback uses our own audio-time → musical-tick map.
+      // Do not warp alphaTab's internal tempo with these points as well; doing both
+      // double-applies the synchronization and changes the score's natural duration.
+      api.score.applyFlatSyncPoints([]);
       api.updateSyncPoints();
       rebuildBackingSyncMap(song);
       return points.length >= 2;
@@ -1232,13 +1306,22 @@
       const detected = await detectBackingStartOffset(song);
       const startOffsetMs = Math.max(0, Math.min(durationMs - 1, Number(detected.offsetMs) || 0));
       const lastBarIndex = bars.length - 1;
+      const scoreDurationMs = Math.max(0, naturalScoreEndMs || Number(api.endTime) || 0);
+      const expectedMusicalEndMs = scoreDurationMs > 0 ? startOffsetMs + scoreDurationMs : durationMs;
+      const beatMs = 60000 / Math.max(1, Number(api.score.tempo) || 120);
+      const hasLongTail = durationMs - expectedMusicalEndMs > beatMs * 1.5;
+      const musicalEndMs = Math.max(
+        startOffsetMs + 1,
+        Math.min(durationMs, hasLongTail ? expectedMusicalEndMs : durationMs)
+      );
+
       song.syncPoints = [
         { barIndex: 0, barOccurence: 0, barPosition: 0, millisecondOffset: startOffsetMs },
         {
           barIndex: lastBarIndex,
           barOccurence: finalBarOccurrence(lastBarIndex),
           barPosition: 1,
-          millisecondOffset: durationMs
+          millisecondOffset: musicalEndMs
         }
       ];
       await putSong(song);
@@ -1246,7 +1329,8 @@
       await refreshCache();
 
       const detectedText = startOffsetMs > 0
-        ? "Detected " + (detected.beats ? detected.beats + "-beat " : "") + "count-in / intro at " + formatSyncTime(startOffsetMs) + "."
+        ? "Detected " + (detected.beats ? detected.beats + "-beat " : "") + "count-in / intro at " + formatSyncTime(startOffsetMs) +
+          (musicalEndMs < durationMs - 250 ? " · ignored trailing audio after " + formatSyncTime(musicalEndMs) : "") + "."
         : "No count-in offset detected.";
       setStatus("Auto sync ready · " + detectedText, "ok");
       toast(startOffsetMs > 0
@@ -1675,6 +1759,7 @@
   }
 
   api.scoreLoaded.on((score) => {
+    naturalScoreEndMs = 0;
     const isMusicXml = pendingInteractiveIsMusicXml;
     const forcedSystemBreaks = pendingMusicXmlSystemBreaks.slice();
     pendingInteractiveIsMusicXml = false;
@@ -1743,6 +1828,7 @@
 
   api.playerReady.on(() => {
     playerReady = true;
+    if (!backingModeActive) naturalScoreEndMs = Math.max(0, Number(api.endTime) || 0);
     [el.stop, el.play, el.countIn, el.metro, el.loop, el.speed].forEach((node) => node.disabled = false);
     updateSourceUI();
     renderSyncPanel(selectedSong());
