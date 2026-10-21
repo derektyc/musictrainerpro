@@ -2484,14 +2484,24 @@
 
     const supplied=[
       ["interactive",value.interactiveFile],
-      ["pdf",value.pdfFile],
-      ["audio",value.audioFile]
+      ["pdf",value.pdfFile]
     ];
     for(const [kind,file] of supplied){
       if(!file) continue;
       const actual=classifyFile(file);
       if(actual!==kind) throw new Error("The selected "+assetLabel(kind).toLowerCase()+" file is not supported.");
       song[kind]=makeAsset(file);
+    }
+
+    const audioFiles=Array.from(value.audioFiles||[]).filter(Boolean);
+    if(value.audioFile) audioFiles.unshift(value.audioFile);
+    const seenAudio=new Set();
+    for(const file of audioFiles){
+      if(seenAudio.has(file)) continue;
+      seenAudio.add(file);
+      const actual=classifyFile(file);
+      if(actual!=="audio") throw new Error("One of the selected backing tracks is not a supported MP3/WAV file.");
+      addAudioVersion(song,file);
     }
 
     await putSong(song);
@@ -2513,6 +2523,23 @@
     localStorage.setItem("dtmtp-selected-song",song.id);
     await refreshCache();
     setStatus("Song renamed.","ok");
+    return await getSong(song.id);
+  }
+
+  async function addSongAudioVersions(id,files) {
+    const list=Array.from(files||[]).filter(Boolean);
+    if(!list.length) throw new Error("Choose at least one MP3 or WAV file.");
+    const song=await getSong(id);
+    if(!song) throw new Error("Song not found.");
+    for(const file of list){
+      if(classifyFile(file)!=="audio") throw new Error("One of the selected files is not a supported MP3/WAV backing track.");
+      addAudioVersion(song,file);
+    }
+    await putSong(song);
+    selectedSongId=song.id;
+    localStorage.setItem("dtmtp-selected-song",song.id);
+    await refreshCache();
+    setStatus(list.length+" backing version"+(list.length===1?"":"s")+" added.","ok");
     return await getSong(song.id);
   }
 
@@ -2583,6 +2610,7 @@
     createSong:createSongWithAssets,
     renameSong:renameSongById,
     replaceAsset:replaceSongAsset,
+    addAudioVersions:addSongAudioVersions,
     deleteSong:deleteSongById,
     openInteractive:openInteractiveById,
     openPdf:openPdfById,
