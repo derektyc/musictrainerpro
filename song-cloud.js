@@ -867,6 +867,8 @@
       createdAt:Number(meta.createdAt||Date.now()),
       updatedAt:Number(meta.libraryUpdatedAt||meta.localUpdatedAt||Date.now()),
       syncPoints:Array.isArray(meta.syncPoints)?meta.syncPoints:[],
+      activeAudioId:meta.activeAudioId||"",
+      audioVersions:[],
       interactive:null,
       pdf:null,
       audio:null
@@ -928,6 +930,56 @@
       local[kind]=asset;
       await saveLocalSong(local);
       emit("synced",(meta.title||"Song")+" "+(kind==="audio"?"backing track":kind)+" cached on this device");
+      return asset;
+    })().finally(()=>libraryDownloading.delete(key));
+
+    libraryDownloading.set(key,task);
+    return task;
+  }
+
+  async function ensureLibraryAudioVersion(songId,versionId){
+    if(!songId||!versionId) throw new Error("Choose a backing-track version first.");
+    const key=songId+":audio-version:"+versionId;
+    if(libraryDownloading.has(key)) return libraryDownloading.get(key);
+
+    const task=(async()=>{
+      const F=fb();
+      const s=session||currentSession();
+      if(!F||!s||s.role!=="teacher"||!s.academyId) throw new Error("Teacher cloud account is not ready.");
+      const metaRef=F.doc(F.db,"academies",s.academyId,"songs",songId);
+      const snap=await F.getDoc(metaRef);
+      if(!snap.exists()) throw new Error("Song not found in the cloud Library.");
+      const meta=snap.data()||{};
+      const remoteVersions=remoteLibraryAudioVersions(meta,masterAssets(meta));
+      const remote=remoteVersions.find(v=>v.id===versionId);
+      if(!remote||!remote.asset) throw new Error("This backing-track version is not available in Google Drive.");
+
+      let local=await localSong(songId);
+      if(!local) local=await ensureLocalLibraryRecord(songId);
+      const versions=localAudioVersions(local);
+      let version=versions.find(v=>v.id===versionId);
+      if(version&&sameAsset(version.asset,remote.asset)) return version.asset;
+
+      try{await ensureDriveToken();}
+      catch(error){throw new Error("Reconnect Google Drive to load this backing-track version.");}
+      emit("syncing","Downloading "+(remote.label||remote.asset.name||"backing track")+"…");
+      const asset=await downloadPrivateDriveAsset(remote.asset);
+
+      let nextVersions=localAudioVersions(local).slice();
+      const index=nextVersions.findIndex(v=>v.id===versionId);
+      const nextVersion={
+        id:remote.id,
+        label:remote.label||remote.asset.name||"Backing track",
+        syncPoints:Array.isArray(remote.syncPoints)?remote.syncPoints:[],
+        asset
+      };
+      if(index>=0) nextVersions[index]=nextVersion; else nextVersions.push(nextVersion);
+      local.audioVersions=nextVersions;
+      local.activeAudioId=versionId;
+      local.audio=asset;
+      local.syncPoints=nextVersion.syncPoints;
+      await saveLocalSong(local);
+      emit("synced",(meta.title||"Song")+" backing version cached on this device");
       return asset;
     })().finally(()=>libraryDownloading.delete(key));
 
@@ -1295,6 +1347,7 @@
     syncTeacherLibrary,
     publishLibrarySong,
     ensureLibraryAsset,
+    ensureLibraryAudioVersion,
     ensureLocalLibraryRecord,
     ensureTeacherLibrarySong,
     renameLibrarySong,
