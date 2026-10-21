@@ -937,6 +937,43 @@
     return task;
   }
 
+  async function ensureAudioVersion(songId,versionId){
+    const s=session||currentSession();
+    if(!s) throw new Error("Cloud account is not ready.");
+    if(s.role==="teacher") return ensureLibraryAudioVersion(songId,versionId);
+
+    const F=fb();
+    if(!F||!s.academyId) throw new Error("Cloud account is not ready.");
+    const snap=await F.getDoc(F.doc(F.db,"academies",s.academyId,"songs",songId));
+    if(!snap.exists()) throw new Error("Song not found.");
+    const meta=snap.data()||{};
+    const versions=Array.isArray(meta.audioVersions)?meta.audioVersions:[];
+    const remote=versions.find(v=>v&&v.id===versionId);
+    if(!remote||!remote.asset) throw new Error("This backing-track version is unavailable.");
+
+    let local=await localSong(songId);
+    if(!local) local=await ensureSong(songId);
+    let localVersions=localAudioVersions(local).slice();
+    let existing=localVersions.find(v=>v.id===versionId);
+    if(existing&&sameAsset(existing.asset,remote.asset)) return existing.asset;
+
+    const asset=await downloadDriveAsset(remote.asset);
+    const nextVersion={
+      id:remote.id,
+      label:remote.label||remote.asset.name||"Backing track",
+      syncPoints:Array.isArray(remote.syncPoints)?remote.syncPoints:[],
+      asset
+    };
+    const index=localVersions.findIndex(v=>v.id===versionId);
+    if(index>=0) localVersions[index]=nextVersion; else localVersions.push(nextVersion);
+    local.audioVersions=localVersions;
+    local.activeAudioId=versionId;
+    local.audio=asset;
+    local.syncPoints=nextVersion.syncPoints;
+    await saveLocalSong(local);
+    return asset;
+  }
+
   async function ensureLibraryAudioVersion(songId,versionId){
     if(!songId||!versionId) throw new Error("Choose a backing-track version first.");
     const key=songId+":audio-version:"+versionId;
@@ -1262,6 +1299,8 @@
         title:meta.title||(local&&local.title)||"Untitled Song",
         createdAt:Number(meta.createdAt||(local&&local.createdAt)||Date.now()),
         updatedAt:Number(meta.localUpdatedAt||Date.now()),
+        activeAudioId:meta.activeAudioId||(local&&local.activeAudioId)||"",
+        audioVersions:localAudioVersions(local),
         syncPoints:Array.isArray(meta.syncPoints)?meta.syncPoints:[],
         interactive:local&&local.interactive?local.interactive:null,
         pdf:local&&local.pdf?local.pdf:null,
@@ -1270,7 +1309,7 @@
 
       emit("syncing","Downloading " + next.title + " from Google Drive…");
       let downloaded=0;
-      for(const kind of ["interactive","pdf","audio"]){
+      for(const kind of ["interactive","pdf"]){
         const remote=assets[kind]||null;
         if(!remote){
           next[kind]=null;
@@ -1279,6 +1318,46 @@
         if(!sameAsset(next[kind],remote)){
           next[kind]=await downloadDriveAsset(remote);
           downloaded+=1;
+        }
+      }
+
+      const remoteAudioVersions=Array.isArray(meta.audioVersions)?meta.audioVersions:[];
+      if(remoteAudioVersions.length){
+        const localVersionMap=new Map(localAudioVersions(local).map(v=>[v.id,v]));
+        next.audioVersions=[];
+        for(const remoteVersion of remoteAudioVersions){
+          if(!remoteVersion||!remoteVersion.asset) continue;
+          const cached=localVersionMap.get(remoteVersion.id);
+          const asset=cached&&sameAsset(cached.asset,remoteVersion.asset)
+            ? cached.asset
+            : await downloadDriveAsset(remoteVersion.asset);
+          if(!(cached&&sameAsset(cached.asset,remoteVersion.asset))) downloaded+=1;
+          next.audioVersions.push({
+            id:remoteVersion.id,
+            label:remoteVersion.label||remoteVersion.asset.name||"Backing track",
+            syncPoints:Array.isArray(remoteVersion.syncPoints)?remoteVersion.syncPoints:[],
+            asset
+          });
+        }
+        const active=next.audioVersions.find(v=>v.id===next.activeAudioId)||next.audioVersions[0]||null;
+        if(active){
+          next.activeAudioId=active.id;
+          next.audio=active.asset;
+          next.syncPoints=active.syncPoints;
+        }
+      }else if(assets.audio){
+        if(!sameAsset(next.audio,assets.audio)){
+          next.audio=await downloadDriveAsset(assets.audio);
+          downloaded+=1;
+        }
+        if(next.audio){
+          next.audioVersions=[{
+            id:next.activeAudioId||("legacy-"+songId),
+            label:next.audio.name||"Backing track",
+            syncPoints:Array.isArray(meta.syncPoints)?meta.syncPoints:[],
+            asset:next.audio
+          }];
+          next.activeAudioId=next.audioVersions[0].id;
         }
       }
 
@@ -1380,6 +1459,7 @@
     syncTeacherLibrary,
     publishLibrarySong,
     ensureLibraryAsset,
+    ensureAudioVersion,
     ensureLibraryAudioVersion,
     ensureLocalLibraryRecord,
     ensureTeacherLibrarySong,
