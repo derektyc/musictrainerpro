@@ -2615,6 +2615,7 @@
     openInteractive:openInteractiveById,
     openPdf:openPdfById,
     playAudio:playAudioById,
+    selectAudioVersion,
     stopAudio:stopBackingAudio,
     readInteractiveMetadata,
     diagnoseMusicXml:(xmlText)=> {
