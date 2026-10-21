@@ -93,6 +93,7 @@
   let backingLoopEndMs = 0;
   let backingSyncMap = [];
   let backingCursorDriverActive = false;
+  let backingPreRollFrozen = false;
   let synthVolumeBeforeBacking = 1;
   let naturalScoreEndMs = 0;
   let toastTimer = null;
@@ -1413,6 +1414,7 @@
     try {
       await ensureBackingAudio(song);
       if (normalizeSyncPoints(song.syncPoints).length < 2) {
+        setStatus("No sync map yet · detecting count-in and syncing automatically…");
         await autoSyncWholeSong();
         song = await getSong(selectedSongId);
       }
@@ -1451,6 +1453,25 @@
     }
   }
 
+  function backingStartAudioMs() {
+    return backingSyncMap.length ? Math.max(0,Number(backingSyncMap[0].audioMs)||0) : 0;
+  }
+
+  function backingIsInPreRoll(audioMs) {
+    const startMs=backingStartAudioMs();
+    return startMs>0 && Math.max(0,Number(audioMs)||0) < startMs;
+  }
+
+  function freezeBackingCursorAtStart() {
+    if (!api || !api.score || !backingSyncMap.length) return;
+    if (!backingPreRollFrozen) {
+      pauseBackingCursorDriver(false);
+      try { api.masterVolume = 0; } catch (error) {}
+      try { api.tickPosition = backingSyncMap[0].scoreTick; } catch (error) {}
+      backingPreRollFrozen = true;
+    }
+  }
+
   function startBackingCursorDriver() {
     if (!backingModeActive || !api || !playerReady) return;
     try {
@@ -1461,6 +1482,11 @@
       }
       api.masterVolume = 0;
       const audioMs = (Number(el.audio.currentTime) || 0) * 1000;
+      if (backingIsInPreRoll(audioMs)) {
+        freezeBackingCursorAtStart();
+        return;
+      }
+      backingPreRollFrozen = false;
       api.tickPosition = scoreTickFromBackingAudio(audioMs);
       if (!scorePlaying && typeof api.play === "function") api.play();
       backingCursorDriverActive = true;
@@ -1474,9 +1500,10 @@
     try {
       if (scorePlaying && typeof api.pause === "function") api.pause();
     } catch (error) {}
+    backingCursorDriverActive = false;
     if (restoreVolume) {
       try { api.masterVolume = synthVolumeBeforeBacking; } catch (error) {}
-      backingCursorDriverActive = false;
+      backingPreRollFrozen = false;
     }
   }
 
@@ -1524,8 +1551,15 @@
     let scoreTick = 0;
     try {
       scoreTick = scoreTickFromBackingAudio(audioMs);
-      if (Number.isFinite(scoreTick)) api.tickPosition = scoreTick;
-      if (!el.audio.paused && !backingCursorDriverActive) startBackingCursorDriver();
+      if (backingIsInPreRoll(audioMs)) {
+        // During count-in / intro, park the cursor once at bar 1. Re-seeking the
+        // same tick every 50 ms makes alphaTab's cursor visibly vibrate.
+        freezeBackingCursorAtStart();
+      } else {
+        backingPreRollFrozen = false;
+        if (Number.isFinite(scoreTick)) api.tickPosition = scoreTick;
+        if (!el.audio.paused && !backingCursorDriverActive) startBackingCursorDriver();
+      }
     } catch (error) {
       console.warn("Backing cursor update failed",error);
     }
@@ -2126,9 +2160,13 @@
   el.audio.addEventListener("play", () => {
     if (backingModeActive) {
       el.play.textContent = "Ⅱ";
-      startBackingCursorDriver();
+      const audioMs=(Number(el.audio.currentTime)||0)*1000;
+      if (backingIsInPreRoll(audioMs)) freezeBackingCursorAtStart();
+      else startBackingCursorDriver();
       startBackingSyncTimer();
-      setStatus("Synced backing playing.", "ok");
+      setStatus(backingIsInPreRoll(audioMs)
+        ? "Count-in / intro playing · score will start automatically."
+        : "Synced backing playing.", "ok");
     } else if (scorePlaying) {
       try { api.pause(); } catch (e) {}
     }
