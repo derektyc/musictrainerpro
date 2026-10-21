@@ -106,6 +106,7 @@
   let toastTimer = null;
   let pendingMusicXmlSystemBreaks = [];
   let pendingMusicXmlGroupedPartPairs = 0;
+  let pendingMusicXmlLetRingSpans = [];
   let pendingInteractiveIsMusicXml = false;
 
   function setStatus(text, tone) {
@@ -308,72 +309,113 @@
     return added;
   }
 
-  function normalizeMuseScoreLetRingDirections(doc) {
-    if(!doc) return 0;
-    const directions=Array.from(doc.getElementsByTagName("direction"));
-    const activeNumbers=new Set();
-    let converted=0;
+  function extractMuseScoreLetRingSpans(doc) {
+    if(!doc) return [];
+    const spans=[];
+    const parts=Array.from(doc.getElementsByTagName("part"));
 
-    directions.forEach(direction=>{
-      const words=Array.from(direction.getElementsByTagName("words"));
-      const letRingWord=words.find(node=>/^let\s*ring$/i.test(String(node.textContent||"").trim()));
-      const brackets=Array.from(direction.getElementsByTagName("bracket"));
+    parts.forEach((part,partIndex)=>{
+      const measures=Array.from(part.children||[]).filter(n=>n.localName==="measure");
+      const open=new Map();
 
-      if(letRingWord){
-        // alphaTab's MusicXML importer recognizes LetRing when a words direction
-        // is followed by <dashes>, while MuseScore exports this effect as a
-        // dashed generic <bracket>, which alphaTab does not support.
-        letRingWord.textContent="LetRing";
-        brackets.forEach(bracket=>{
-          if(String(bracket.getAttribute("type")||"").toLowerCase()!=="start") return;
-          const number=String(bracket.getAttribute("number")||"1");
-          const ns=bracket.namespaceURI||doc.documentElement.namespaceURI||null;
-          const dashes=ns?doc.createElementNS(ns,"dashes"):doc.createElement("dashes");
-          dashes.setAttribute("type","start");
-          dashes.setAttribute("number",number);
-          bracket.parentNode.replaceChild(dashes,bracket);
-          activeNumbers.add(number);
-          converted++;
-        });
-      }
-    });
+      measures.forEach((measure,barIndex)=>{
+        const directions=Array.from(measure.children||[]).filter(n=>n.localName==="direction");
+        directions.forEach(direction=>{
+          const words=Array.from(direction.getElementsByTagName("words"));
+          const letRing=words.some(node=>/^let\s*ring$/i.test(String(node.textContent||"").trim()));
+          const brackets=Array.from(direction.getElementsByTagName("bracket"));
+          const starts=brackets.filter(b=>String(b.getAttribute("type")||"").toLowerCase()==="start");
+          const stops=brackets.filter(b=>String(b.getAttribute("type")||"").toLowerCase()==="stop");
 
-    if(activeNumbers.size){
-      directions.forEach(direction=>{
-        Array.from(direction.getElementsByTagName("bracket")).forEach(bracket=>{
-          if(String(bracket.getAttribute("type")||"").toLowerCase()!=="stop") return;
-          const number=String(bracket.getAttribute("number")||"1");
-          if(!activeNumbers.has(number)) return;
-          const ns=bracket.namespaceURI||doc.documentElement.namespaceURI||null;
-          const dashes=ns?doc.createElementNS(ns,"dashes"):doc.createElement("dashes");
-          dashes.setAttribute("type","stop");
-          dashes.setAttribute("number",number);
-          bracket.parentNode.replaceChild(dashes,bracket);
-          converted++;
+          if(letRing && starts.length){
+            starts.forEach(b=>{
+              const number=String(b.getAttribute("number")||"1");
+              open.set(number,barIndex);
+            });
+            // Remove MuseScore's generic bracket direction completely. alphaTab's
+            // importer can turn this into an incorrect rail after notation/TAB merging.
+            if(direction.parentNode) direction.parentNode.removeChild(direction);
+            return;
+          }
+
+          if(stops.length){
+            let removed=false;
+            stops.forEach(b=>{
+              const number=String(b.getAttribute("number")||"1");
+              if(!open.has(number)) return;
+              const startBar=open.get(number);
+              open.delete(number);
+              spans.push({partIndex,startBar,endBar:barIndex,number});
+              removed=true;
+            });
+            if(removed && direction.parentNode) direction.parentNode.removeChild(direction);
+          }
         });
       });
-    }
-    return converted;
+
+      open.forEach((startBar,number)=>{
+        spans.push({partIndex,startBar,endBar:Math.max(startBar,measures.length-1),number});
+      });
+    });
+
+    return spans;
   }
+
+  function applyMusicXmlLetRingSpans(score,spans) {
+    if(!score||!Array.isArray(spans)||!spans.length||!Array.isArray(score.tracks)||!score.tracks.length) return 0;
+    let applied=0;
+
+    spans.forEach(span=>{
+      // When MuseScore notation+TAB parts are merged, P1 becomes the first staff
+      // of the merged track. If they remain separate, P1 is still track 0.
+      const track=score.tracks[Math.min(Number(span.partIndex)||0,score.tracks.length-1)];
+      if(!track||!Array.isArray(track.staves)||!track.staves.length) return;
+      const staff=track.staves[0];
+      if(!staff||!Array.isArray(staff.bars)) return;
+
+      const from=Math.max(0,Math.min(staff.bars.length-1,Number(span.startBar)||0));
+      const to=Math.max(from,Math.min(staff.bars.length-1,Number(span.endBar)||from));
+      for(let barIndex=from;barIndex<=to;barIndex++){
+        const bar=staff.bars[barIndex];
+        if(!bar||!Array.isArray(bar.voices)) continue;
+        bar.voices.forEach(voice=>{
+          if(!voice||!Array.isArray(voice.beats)) return;
+          voice.beats.forEach(beat=>{
+            if(!beat) return;
+            // Force alphaTab's native LetRing effect model directly. The effect renderer
+            // then produces the proper "LetRing" label and dashed rail.
+            beat.isLetRing=true;
+            if(Array.isArray(beat.notes)){
+              beat.notes.forEach(note=>{if(note) note.isLetRing=true;});
+            }
+          });
+        });
+      }
+      applied++;
+    });
+    return applied;
+  }
+
 
   function normalizePercussionMusicXml(xmlText) {
     const source = String(xmlText || "");
-    if (!source.trim()) return { xml: source, changed: false, restoredNoteheads: 0, groupedPartPairs: 0, letRingFixes: 0, systemBreaks: [] };
+    if (!source.trim()) return { xml: source, changed: false, restoredNoteheads: 0, groupedPartPairs: 0, letRingFixes: 0, letRingSpans: [], systemBreaks: [] };
 
     let doc;
     try {
       doc = new DOMParser().parseFromString(source, "application/xml");
     } catch (error) {
-      return { xml: source, changed: false, restoredNoteheads: 0, groupedPartPairs: 0, letRingFixes: 0, systemBreaks: [] };
+      return { xml: source, changed: false, restoredNoteheads: 0, groupedPartPairs: 0, letRingFixes: 0, letRingSpans: [], systemBreaks: [] };
     }
 
     if (!doc || doc.getElementsByTagName("parsererror").length) {
-      return { xml: source, changed: false, restoredNoteheads: 0, groupedPartPairs: 0, letRingFixes: 0, systemBreaks: [] };
+      return { xml: source, changed: false, restoredNoteheads: 0, groupedPartPairs: 0, letRingFixes: 0, letRingSpans: [], systemBreaks: [] };
     }
 
     const systemBreaks = musicXmlSystemBreaks(doc);
+    const letRingSpans = extractMuseScoreLetRingSpans(doc);
+    const letRingFixes = letRingSpans.length;
     const groupedPartPairs = injectMuseScoreNotationTabGroups(doc);
-    const letRingFixes = normalizeMuseScoreLetRingDirections(doc);
     let restoredNoteheads = 0;
     const notes = Array.from(doc.getElementsByTagName("note"));
     const insertBeforeNames = new Set(["notehead-text","staff","beam","notations","lyric","play","listen"]);
@@ -400,7 +442,7 @@
     });
 
     if (!restoredNoteheads && !groupedPartPairs && !letRingFixes) {
-      return { xml: source, changed: false, restoredNoteheads: 0, groupedPartPairs: 0, letRingFixes: 0, systemBreaks };
+      return { xml: source, changed: false, restoredNoteheads: 0, groupedPartPairs: 0, letRingFixes: 0, letRingSpans: [], systemBreaks };
     }
 
     try {
@@ -410,6 +452,7 @@
         restoredNoteheads,
         groupedPartPairs,
         letRingFixes,
+        letRingSpans,
         systemBreaks
       };
     } catch (error) {
@@ -481,6 +524,7 @@
         percussionFixes: 0,
         groupedPartPairs: normalized.groupedPartPairs || 0,
         letRingFixes: normalized.letRingFixes || 0,
+        letRingSpans: Array.isArray(normalized.letRingSpans) ? normalized.letRingSpans : [],
         systemBreaks: normalized.systemBreaks || [],
         isMusicXml: true
       };
@@ -491,6 +535,7 @@
       percussionFixes: normalized.restoredNoteheads,
       groupedPartPairs: normalized.groupedPartPairs || 0,
       letRingFixes: normalized.letRingFixes || 0,
+      letRingSpans: Array.isArray(normalized.letRingSpans) ? normalized.letRingSpans : [],
       systemBreaks: normalized.systemBreaks || [],
       isMusicXml: true
     };
@@ -2226,6 +2271,7 @@
       const prepared = await prepareInteractiveForAlphaTab(song.interactive);
       pendingInteractiveIsMusicXml = !!prepared.isMusicXml;
       pendingMusicXmlGroupedPartPairs = Number(prepared.groupedPartPairs)||0;
+      pendingMusicXmlLetRingSpans = Array.isArray(prepared.letRingSpans) ? prepared.letRingSpans.map(s=>({...s})) : [];
       pendingMusicXmlSystemBreaks = Array.isArray(prepared.systemBreaks) ? prepared.systemBreaks.slice() : [];
       const accepted = api.load(prepared.bytes);
       if (!accepted) {
@@ -2260,6 +2306,7 @@
   function loadSample() {
     pendingInteractiveIsMusicXml = false;
     pendingMusicXmlGroupedPartPairs = 0;
+    pendingMusicXmlLetRingSpans = [];
     pendingMusicXmlSystemBreaks = [];
     if (api && api.settings && api.settings.display) {
       api.settings.display.systemsLayoutMode = alphaTab.SystemsLayoutMode
@@ -2286,9 +2333,11 @@
     naturalScoreEndMs = 0;
     const isMusicXml = pendingInteractiveIsMusicXml;
     const groupedPartPairs = pendingMusicXmlGroupedPartPairs;
+    const letRingSpans = pendingMusicXmlLetRingSpans.map(s=>({...s}));
     const forcedSystemBreaks = pendingMusicXmlSystemBreaks.slice();
     pendingInteractiveIsMusicXml = false;
     pendingMusicXmlGroupedPartPairs = 0;
+    pendingMusicXmlLetRingSpans = [];
     pendingMusicXmlSystemBreaks = [];
     if (forcedSystemBreaks.length && score && Array.isArray(score.tracks)) {
       score.tracks.forEach((track) => {
@@ -2302,6 +2351,7 @@
       });
     }
 
+    const appliedLetRingSpans = isMusicXml ? applyMusicXmlLetRingSpans(score,letRingSpans) : 0;
     const appliedLayout = isMusicXml ? applyMusicXmlModelLayout(score, forcedSystemBreaks) : null;
     if (!isMusicXml && api && api.settings && api.settings.display) {
       api.settings.display.systemsLayoutMode = alphaTab.SystemsLayoutMode
@@ -2319,7 +2369,8 @@
     const barCount = score.masterBars ? score.masterBars.length : 0;
     el.songMeta.textContent = trackCount + " track" + (trackCount === 1 ? "" : "s") +
       " · " + barCount + " bar" + (barCount === 1 ? "" : "s") +
-      (appliedLayout ? " · Score layout " + appliedLayout.layout.join("+") : "");
+      (appliedLayout ? " · Score layout " + appliedLayout.layout.join("+") : "") +
+      (appliedLetRingSpans ? " · Let ring ✓" : "");
 
     el.loopStart.max = String(Math.max(1, barCount));
     el.loopEnd.max = String(Math.max(1, barCount));
