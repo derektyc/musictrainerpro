@@ -187,6 +187,7 @@
                   <button id="p77Session" class="p77-control p77-session" type="button" disabled>Start Practice</button>
                   <button id="p77Loop" class="p77-control" type="button" disabled title="Loop">↻<span>Loop</span></button>
                   <button id="p77Metro" class="p77-control" type="button" disabled title="Metronome">♩<span>Metro</span></button>
+                  <button id="p77CountIn" class="p77-control" type="button" title="Count in before practice">1·2<span>Count In</span></button>
                   <button id="p77Highlights" class="p77-control" type="button" title="Played-note highlighting">◉<span>Notes</span></button>
                   <button id="p77ClearLoop" class="p77-control p77-clear-loop" type="button" hidden title="Clear loop">×<span>Clear</span></button>
                 </div>
@@ -1894,7 +1895,7 @@
     const active=practiceSessionActive();
     const assignment=session&&session.role==="student"?activeAssignment():null;
     const viewerTitle=$("viewerTitle"), viewerMeta=$("viewerMeta");
-    const oldPlay=$("playBtn"), oldLoop=$("loopBtn"), oldSpeed=$("speed"), oldZoom=$("zoom"), oldMetro=$("metroBtn");
+    const oldPlay=$("playBtn"), oldLoop=$("loopBtn"), oldSpeed=$("speed"), oldZoom=$("zoom"), oldMetro=$("metroBtn"), practiceCountIn=$("practiceCountIn");
     const start=$("practiceStartBtn"), stop=$("practiceStopBtn"), retry=$("practiceRetryBtn");
     const synth=$("synthModeBtn"), backing=$("backingModeBtn"), pdf=$("openPdfBtn");
 
@@ -1973,6 +1974,14 @@
       metro.disabled=!oldMetro||oldMetro.disabled;
       metro.classList.toggle("active",!!(oldMetro&&oldMetro.classList.contains("active")));
     }
+
+    const countIn=$("p77CountIn");
+    if(countIn){
+      const on=!!(practiceCountIn&&practiceCountIn.checked);
+      countIn.disabled=active||!practiceCountIn;
+      countIn.classList.toggle("active",on);
+      const label=countIn.querySelector("span"); if(label) label.textContent=on?"Count In":"Count Off";
+    }
     const highlights=$("p77Highlights");
     if(highlights){
       let on=false;
@@ -2040,7 +2049,7 @@
   }
 
   function bindPracticeChrome(){
-    const play=$("p77Play"), restart=$("p77Restart"), loop=$("p77Loop"), sessionButton=$("p77Session"), metro=$("p77Metro"), highlights=$("p77Highlights"), clearLoop=$("p77ClearLoop");
+    const play=$("p77Play"), restart=$("p77Restart"), loop=$("p77Loop"), sessionButton=$("p77Session"), metro=$("p77Metro"), countIn=$("p77CountIn"), highlights=$("p77Highlights"), clearLoop=$("p77ClearLoop");
     const speed=$("p77Speed"), zoom=$("p77Zoom"), synth=$("p77Synth"), backing=$("p77Backing"), pdf=$("p77OpenPdf"), audioVersion=$("p77AudioVersion");
 
     if(play) play.onclick=()=>practiceClick("playBtn");
@@ -2062,6 +2071,14 @@
       if(oldPlay&&!oldPlay.disabled) setTimeout(()=>oldPlay.click(),40);
     };
     if(metro) metro.onclick=()=>{practiceClick("metroBtn");setTimeout(syncPracticeChrome,30);};
+    if(countIn) countIn.onclick=()=>{
+      if(practiceSessionActive()) return;
+      const old=$("practiceCountIn");
+      if(!old) return;
+      old.checked=!old.checked;
+      old.dispatchEvent(new Event("change",{bubbles:true}));
+      setTimeout(syncPracticeChrome,30);
+    };
     if(highlights) highlights.onclick=()=>{
       try{
         const lib=window.DTMusicTrainerLibrary;
@@ -2104,7 +2121,7 @@
     if(practiceChromeObserver){try{practiceChromeObserver.disconnect();}catch(error){}}
     practiceChromeObserver=new MutationObserver(()=>syncPracticeChrome());
     [
-      "viewerTitle","viewerMeta","playBtn","loopBtn","metroBtn","loopStatus","speed","speedValue","zoom","zoomValue","position",
+      "viewerTitle","viewerMeta","playBtn","loopBtn","metroBtn","practiceCountIn","loopStatus","speed","speedValue","zoom","zoomValue","position",
       "synthModeBtn","backingModeBtn","audioVersionSelect","openPdfBtn","practiceStartBtn","practiceStopBtn","practiceRetryBtn","practiceModeSection","practiceProgressFill"
     ].forEach(id=>{
       const node=$(id);
