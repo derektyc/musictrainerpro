@@ -331,14 +331,65 @@
     return spans;
   }
 
-  function applyMusicXmlLetRingSpans(score,spans) {
+  function nextBeatInVoice(beat) {
+    if(!beat||!beat.voice||!beat.voice.bar) return null;
+    let voice=beat.voice;
+    let bar=voice.bar;
+    let beats=Array.isArray(voice.beats)?voice.beats:[];
+    let index=beats.indexOf(beat)+1;
+    while(true){
+      if(index<beats.length) return beats[index]||null;
+      const staff=bar.staff;
+      if(!staff||!Array.isArray(staff.bars)||bar.index+1>=staff.bars.length) return null;
+      bar=staff.bars[bar.index+1];
+      if(!bar||!Array.isArray(bar.voices)||voice.index>=bar.voices.length) return null;
+      voice=bar.voices[voice.index];
+      beats=Array.isArray(voice.beats)?voice.beats:[];
+      index=0;
+    }
+  }
+
+  function sanitizeMusicXmlTieLinks(score) {
+    if(!score||!Array.isArray(score.tracks)) return 0;
+    let removed=0;
+    score.tracks.forEach(track=>{
+      (track.staves||[]).forEach(staff=>{
+        (staff.bars||[]).forEach(bar=>{
+          (bar.voices||[]).forEach(voice=>{
+            (voice.beats||[]).forEach(beat=>{
+              (beat.notes||[]).forEach(note=>{
+                const destination=note&&note.tieDestination;
+                if(!destination) return;
+                const expected=nextBeatInVoice(note.beat);
+                // A MusicXML tie joins the same pitch to the immediately following
+                // beat in its voice. Anything farther away is an alphaTab linking
+                // artifact and can produce huge arcs across several measures.
+                if(!expected || destination.beat!==expected){
+                  if(destination.tieOrigin===note) destination.tieOrigin=null;
+                  destination.isTieDestination=false;
+                  note.tieDestination=null;
+                  removed++;
+                }
+              });
+            });
+          });
+        });
+      });
+    });
+    return removed;
+  }
+
+  function applyMusicXmlLetRingSpans(score,spans,pairedPartCount) {
     if(!score||!Array.isArray(spans)||!spans.length||!Array.isArray(score.tracks)||!score.tracks.length) return 0;
     let applied=0;
 
     spans.forEach(span=>{
-      // When MuseScore notation+TAB parts are merged, P1 becomes the first staff
-      // of the merged track. If they remain separate, P1 is still track 0.
-      const track=score.tracks[Math.min(Number(span.partIndex)||0,score.tracks.length-1)];
+      // For MuseScore's notation+TAB pair, put the let-ring effect on the TAB
+      // track. alphaTab renders track effects above their track, which places the
+      // label/dashed rail naturally between standard notation and TAB.
+      let trackIndex=Math.min(Number(span.partIndex)||0,score.tracks.length-1);
+      if((Number(pairedPartCount)||0)>0 && trackIndex===0 && score.tracks.length>1) trackIndex=1;
+      const track=score.tracks[trackIndex];
       if(!track||!Array.isArray(track.staves)||!track.staves.length) return;
       const staff=track.staves[0];
       if(!staff||!Array.isArray(staff.bars)) return;
@@ -2321,7 +2372,8 @@
       });
     }
 
-    const appliedLetRingSpans = isMusicXml ? applyMusicXmlLetRingSpans(score,letRingSpans) : 0;
+    const removedBadTies = isMusicXml ? sanitizeMusicXmlTieLinks(score) : 0;
+    const appliedLetRingSpans = isMusicXml ? applyMusicXmlLetRingSpans(score,letRingSpans,groupedPartPairs) : 0;
     const appliedLayout = isMusicXml ? applyMusicXmlModelLayout(score, forcedSystemBreaks) : null;
     if (!isMusicXml && api && api.settings && api.settings.display) {
       api.settings.display.systemsLayoutMode = alphaTab.SystemsLayoutMode
@@ -2340,7 +2392,8 @@
     el.songMeta.textContent = trackCount + " track" + (trackCount === 1 ? "" : "s") +
       " · " + barCount + " bar" + (barCount === 1 ? "" : "s") +
       (appliedLayout ? " · Score layout " + appliedLayout.layout.join("+") : "") +
-      (appliedLetRingSpans ? " · Let ring ✓" : "");
+      (appliedLetRingSpans ? " · Let ring ✓" : "") +
+      (removedBadTies ? " · Tie repair "+removedBadTies : "");
 
     el.loopStart.max = String(Math.max(1, barCount));
     el.loopEnd.max = String(Math.max(1, barCount));
