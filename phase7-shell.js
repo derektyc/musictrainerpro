@@ -188,6 +188,8 @@
                   <button id="p77Loop" class="p77-control" type="button" disabled title="Loop">↻<span>Loop</span></button>
                   <button id="p77Metro" class="p77-control" type="button" disabled title="Metronome">♩<span>Metro</span></button>
                   <button id="p77CountIn" class="p77-control" type="button" title="Count in before practice">1·2<span>Count In</span></button>
+                  <button id="p77Drums" class="p77-control" type="button" title="Custom drum samples">🥁<span>Drums</span></button>
+                  <input id="p77DrumFile" type="file" accept=".wav,audio/wav,audio/x-wav" hidden>
                   <button id="p77Highlights" class="p77-control" type="button" title="Played-note highlighting">◉<span>Notes</span></button>
                   <button id="p77ClearLoop" class="p77-control p77-clear-loop" type="button" hidden title="Clear loop">×<span>Clear</span></button>
                 </div>
@@ -1982,6 +1984,21 @@
       countIn.classList.toggle("active",on);
       const label=countIn.querySelector("span"); if(label) label.textContent=on?"Count In":"Count Off";
     }
+    const drums=$("p77Drums");
+    if(drums){
+      let status={loaded:false,enabled:false,name:"",slices:0};
+      try{
+        const lib=window.DTMusicTrainerLibrary;
+        if(lib&&typeof lib.getCustomDrumKitStatus==="function") status=lib.getCustomDrumKitStatus()||status;
+      }catch(error){}
+      drums.classList.toggle("active",!!status.enabled);
+      drums.title=status.loaded
+        ? ((status.enabled?"Custom drums active":"Built-in synth drums active")+" · "+(status.name||"Custom Drum Kit"))
+        : "Import custom drum samples (WAV)";
+      const label=drums.querySelector("span");
+      if(label) label.textContent=status.loaded?(status.enabled?"Custom":"Synth"):"Drums";
+    }
+
     const highlights=$("p77Highlights");
     if(highlights){
       let on=false;
@@ -2049,7 +2066,7 @@
   }
 
   function bindPracticeChrome(){
-    const play=$("p77Play"), restart=$("p77Restart"), loop=$("p77Loop"), sessionButton=$("p77Session"), metro=$("p77Metro"), countIn=$("p77CountIn"), highlights=$("p77Highlights"), clearLoop=$("p77ClearLoop");
+    const play=$("p77Play"), restart=$("p77Restart"), loop=$("p77Loop"), sessionButton=$("p77Session"), metro=$("p77Metro"), countIn=$("p77CountIn"), drums=$("p77Drums"), drumFile=$("p77DrumFile"), highlights=$("p77Highlights"), clearLoop=$("p77ClearLoop");
     const speed=$("p77Speed"), zoom=$("p77Zoom"), synth=$("p77Synth"), backing=$("p77Backing"), pdf=$("p77OpenPdf"), audioVersion=$("p77AudioVersion");
 
     if(play) play.onclick=()=>practiceClick("playBtn");
@@ -2078,6 +2095,32 @@
       old.checked=!old.checked;
       old.dispatchEvent(new Event("change",{bubbles:true}));
       setTimeout(syncPracticeChrome,30);
+    };
+    if(drums) drums.onclick=async()=>{
+      if(practiceSessionActive()) return;
+      const lib=window.DTMusicTrainerLibrary;
+      if(!lib) return;
+      const status=typeof lib.getCustomDrumKitStatus==="function"?lib.getCustomDrumKitStatus():null;
+      if(!status||!status.loaded){
+        if(drumFile){drumFile.value="";drumFile.click();}
+        return;
+      }
+      if(typeof lib.setCustomDrumKitEnabled==="function"){
+        await lib.setCustomDrumKitEnabled(!status.enabled);
+        setTimeout(syncPracticeChrome,30);
+      }
+    };
+    if(drumFile) drumFile.onchange=async()=>{
+      const file=drumFile.files&&drumFile.files[0];
+      if(!file) return;
+      try{
+        const lib=window.DTMusicTrainerLibrary;
+        if(!lib||typeof lib.importCustomDrumKit!=="function") throw new Error("Custom drum engine is unavailable.");
+        await lib.importCustomDrumKit(file);
+        setTimeout(syncPracticeChrome,30);
+      }catch(error){
+        alert(error&&error.message?error.message:"Could not import the drum samples.");
+      }
     };
     if(highlights) highlights.onclick=()=>{
       try{
@@ -2384,6 +2427,9 @@
     if(currentRoute==="practice") syncPracticeChrome();
   });
   window.addEventListener("dtmtp:practice-display-changed",()=>{
+    if(currentRoute==="practice") syncPracticeChrome();
+  });
+  window.addEventListener("dtmtp:custom-drum-kit-changed",()=>{
     if(currentRoute==="practice") syncPracticeChrome();
   });
   window.addEventListener("dtmtp:materials-ready",refreshData);
