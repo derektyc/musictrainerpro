@@ -99,6 +99,12 @@
   let backingTracksMuted = false;
   let playedNoteHighlighting = false;
   let synthVolumeBeforeBacking = 1;
+  let customDrumKit = null;
+  let customDrumBuffer = null;
+  let customDrumContext = null;
+  let customDrumDbPromise = null;
+  let customDrumEnabled = true;
+  const customDrumSources = new Set();
   let naturalScoreEndMs = 0;
   let lookAheadScrollRaf = 0;
   let lookAheadScrollCooldownUntil = 0;
@@ -108,6 +114,263 @@
   let pendingMusicXmlGroupedPartPairs = 0;
   let pendingMusicXmlLetRingSpans = [];
   let pendingInteractiveIsMusicXml = false;
+
+  const CUSTOM_DRUM_DB="dtmtp-custom-drum-kit";
+  const CUSTOM_DRUM_STORE="kit";
+  const CUSTOM_DRUM_SLOT_ORDER=[
+    {name:"Kick",notes:[35,36]},
+    {name:"Snare",notes:[37,38,40]},
+    {name:"Closed Hi-Hat",notes:[42,44]},
+    {name:"Open Hi-Hat",notes:[46]},
+    {name:"High Tom",notes:[48,50]},
+    {name:"Mid Tom",notes:[45,47]},
+    {name:"Floor Tom",notes:[41,43]},
+    {name:"Crash",notes:[49,57]},
+    {name:"Ride",notes:[51,53,59]}
+  ];
+
+  function openCustomDrumDb(){
+    if(customDrumDbPromise) return customDrumDbPromise;
+    customDrumDbPromise=new Promise((resolve,reject)=>{
+      const request=indexedDB.open(CUSTOM_DRUM_DB,1);
+      request.onupgradeneeded=()=>{
+        const db=request.result;
+        if(!db.objectStoreNames.contains(CUSTOM_DRUM_STORE)) db.createObjectStore(CUSTOM_DRUM_STORE,{keyPath:"id"});
+      };
+      request.onsuccess=()=>resolve(request.result);
+      request.onerror=()=>reject(request.error||new Error("Could not open custom drum storage."));
+    });
+    return customDrumDbPromise;
+  }
+
+  async function saveCustomDrumKit(record){
+    const db=await openCustomDrumDb();
+    await new Promise((resolve,reject)=>{
+      const tx=db.transaction(CUSTOM_DRUM_STORE,"readwrite");
+      tx.objectStore(CUSTOM_DRUM_STORE).put(record);
+      tx.oncomplete=resolve;
+      tx.onerror=()=>reject(tx.error||new Error("Could not save custom drum kit."));
+    });
+  }
+
+  async function readCustomDrumKit(){
+    const db=await openCustomDrumDb();
+    return await new Promise((resolve,reject)=>{
+      const tx=db.transaction(CUSTOM_DRUM_STORE,"readonly");
+      const request=tx.objectStore(CUSTOM_DRUM_STORE).get("active");
+      request.onsuccess=()=>resolve(request.result||null);
+      request.onerror=()=>reject(request.error||new Error("Could not read custom drum kit."));
+    });
+  }
+
+  function customDrumAudio(){
+    if(!customDrumContext){
+      const Ctx=window.AudioContext||window.webkitAudioContext;
+      if(Ctx) customDrumContext=new Ctx();
+    }
+    if(customDrumContext&&customDrumContext.state==="suspended") customDrumContext.resume().catch(()=>{});
+    return customDrumContext;
+  }
+
+  async function decodeCustomDrumBlob(blob){
+    const ctx=customDrumAudio();
+    if(!ctx||!blob) return null;
+    const bytes=await blob.arrayBuffer();
+    return await ctx.decodeAudioData(bytes.slice(0));
+  }
+
+  function detectDrumSlices(buffer){
+    if(!buffer||!buffer.length||!buffer.sampleRate) return [];
+    const sr=buffer.sampleRate;
+    const channels=Math.max(1,buffer.numberOfChannels||1);
+    const length=buffer.length;
+    const frame=Math.max(64,Math.round(sr*0.01));
+    const rms=[];
+    let peakRms=0;
+    for(let start=0;start<length;start+=frame){
+      const end=Math.min(length,start+frame);
+      let sum=0,count=0;
+      for(let ch=0;ch<channels;ch++){
+        const data=buffer.getChannelData(ch);
+        for(let i=start;i<end;i+=2){const v=data[i]||0;sum+=v*v;count++;}
+      }
+      const value=Math.sqrt(sum/Math.max(1,count));
+      rms.push(value);
+      if(value>peakRms) peakRms=value;
+    }
+    const sorted=rms.slice().sort((a,b)=>a-b);
+    const noise=sorted.length?sorted[Math.floor(sorted.length*0.2)]||0:0;
+    const threshold=Math.max(0.004,noise*5,peakRms*0.035);
+    const active=[];
+    rms.forEach((v,i)=>{if(v>=threshold) active.push(i);});
+    if(!active.length) return [{start:0,duration:buffer.duration}];
+
+    const maxGap=Math.max(2,Math.round(0.18/0.01));
+    const regions=[];
+    let start=active[0],prev=active[0];
+    for(let i=1;i<active.length;i++){
+      const at=active[i];
+      if(at-prev>maxGap){regions.push([start,prev]);start=at;}
+      prev=at;
+    }
+    regions.push([start,prev]);
+
+    const slices=regions.map(([a,b])=>{
+      const startSec=Math.max(0,a*0.01-0.015);
+      const endSec=Math.min(buffer.duration,(b+1)*0.01+0.22);
+      return {start:startSec,duration:Math.max(0.05,endSec-startSec)};
+    }).filter(s=>s.duration>=0.05);
+
+    return slices.length?slices:[{start:0,duration:buffer.duration}];
+  }
+
+  function defaultDrumMapping(slices){
+    const mapping={};
+    if(!Array.isArray(slices)||!slices.length) return mapping;
+    CUSTOM_DRUM_SLOT_ORDER.forEach((slot,index)=>{
+      const sliceIndex=Math.min(index,slices.length-1);
+      slot.notes.forEach(note=>{mapping[note]=sliceIndex;});
+    });
+    return mapping;
+  }
+
+  function findPercussionTracks(score){
+    if(!score||!Array.isArray(score.tracks)) return [];
+    return score.tracks.filter(track=>{
+      try{
+        for(const staff of (track.staves||[])){
+          if(staff.isPercussion) return true;
+          for(const bar of (staff.bars||[])){
+            for(const voice of (bar.voices||[])){
+              for(const beat of (voice.beats||[])){
+                if((beat.notes||[]).some(note=>note&&note.isPercussion)) return true;
+              }
+            }
+          }
+        }
+      }catch(error){}
+      return false;
+    });
+  }
+
+  function applyCustomDrumMuteState(){
+    if(!api||!api.score||typeof api.changeTrackMute!=="function") return;
+    const tracks=findPercussionTracks(api.score);
+    if(!tracks.length) return;
+    const useCustom=!!(customDrumKit&&customDrumEnabled&&!backingModeActive);
+    try{api.changeTrackMute(tracks,useCustom);}catch(error){console.warn("Could not switch percussion synth output",error);}
+  }
+
+  async function importCustomDrumKit(file){
+    if(!file) throw new Error("Choose a WAV file containing the drum samples.");
+    const name=String(file.name||"").toLowerCase();
+    if(!name.endsWith(".wav")&&!/^audio\/wav/i.test(file.type||"")) throw new Error("Custom drum kit must be a WAV file.");
+    const buffer=await decodeCustomDrumBlob(file);
+    if(!buffer) throw new Error("Could not decode this WAV file.");
+    const slices=detectDrumSlices(buffer);
+    const record={
+      id:"active",
+      name:file.name||"Custom Drum Kit.wav",
+      blob:file,
+      slices,
+      mapping:defaultDrumMapping(slices),
+      enabled:true,
+      updatedAt:Date.now()
+    };
+    await saveCustomDrumKit(record);
+    customDrumKit=record;
+    customDrumBuffer=buffer;
+    customDrumEnabled=true;
+    applyCustomDrumMuteState();
+    window.dispatchEvent(new CustomEvent("dtmtp:custom-drum-kit-changed",{detail:{loaded:true,enabled:true,name:record.name,slices:slices.length}}));
+    toast("Custom drum kit loaded · "+slices.length+" sample"+(slices.length===1?"":"s")+" detected.");
+    return {name:record.name,slices:slices.length,enabled:true};
+  }
+
+  async function loadCustomDrumKit(){
+    try{
+      const record=await readCustomDrumKit();
+      if(!record||!record.blob) return null;
+      customDrumKit=record;
+      customDrumEnabled=record.enabled!==false;
+      customDrumBuffer=await decodeCustomDrumBlob(record.blob);
+      applyCustomDrumMuteState();
+      window.dispatchEvent(new CustomEvent("dtmtp:custom-drum-kit-changed",{detail:{loaded:true,enabled:customDrumEnabled,name:record.name,slices:(record.slices||[]).length}}));
+      return record;
+    }catch(error){
+      console.warn("Custom drum kit could not be loaded",error);
+      return null;
+    }
+  }
+
+  async function setCustomDrumKitEnabled(enabled){
+    customDrumEnabled=!!enabled;
+    if(customDrumKit){
+      customDrumKit={...customDrumKit,enabled:customDrumEnabled};
+      try{await saveCustomDrumKit(customDrumKit);}catch(error){}
+    }
+    applyCustomDrumMuteState();
+    window.dispatchEvent(new CustomEvent("dtmtp:custom-drum-kit-changed",{detail:{loaded:!!customDrumKit,enabled:customDrumEnabled,name:customDrumKit&&customDrumKit.name||"",slices:customDrumKit&&customDrumKit.slices?customDrumKit.slices.length:0}}));
+    return customDrumEnabled;
+  }
+
+  function customDrumKitStatus(){
+    return {loaded:!!customDrumKit,enabled:!!(customDrumKit&&customDrumEnabled),name:customDrumKit&&customDrumKit.name||"",slices:customDrumKit&&customDrumKit.slices?customDrumKit.slices.length:0};
+  }
+
+  function stopCustomDrumSources(){
+    customDrumSources.forEach(source=>{try{source.stop();}catch(error){}});
+    customDrumSources.clear();
+  }
+
+  function playCustomDrumNote(note,velocity){
+    if(!customDrumKit||!customDrumEnabled||backingModeActive||!customDrumBuffer) return;
+    const slices=customDrumKit.slices||[];
+    const index=Number(customDrumKit.mapping&&customDrumKit.mapping[note]);
+    const slice=slices[Number.isFinite(index)?index:Math.min(Math.max(0,note-35),Math.max(0,slices.length-1))];
+    if(!slice) return;
+    const ctx=customDrumAudio();
+    if(!ctx) return;
+    const source=ctx.createBufferSource();
+    const gain=ctx.createGain();
+    source.buffer=customDrumBuffer;
+    const vel=Math.max(1,Math.min(127,Number(velocity)||100))/127;
+    gain.gain.value=Math.pow(vel,1.15);
+    source.connect(gain); gain.connect(ctx.destination);
+    source.onended=()=>customDrumSources.delete(source);
+    customDrumSources.add(source);
+    try{source.start(0,Math.max(0,Number(slice.start)||0),Math.max(0.03,Number(slice.duration)||0.2));}
+    catch(error){customDrumSources.delete(source);}
+  }
+
+  function customDrumMidiEventParts(item){
+    const event=item&&(item.event||item.midiEvent||item);
+    if(!event) return null;
+    const rawCommand=event.command!==undefined?event.command:(event.status!==undefined?event.status:event.type);
+    const name=String(rawCommand===undefined?"":rawCommand).toLowerCase();
+    const command=Number(rawCommand);
+    const channel=Number(event.channel!==undefined?event.channel:event.midiChannel);
+    const note=Number(event.noteKey!==undefined?event.noteKey:(event.note!==undefined?event.note:(event.key!==undefined?event.key:(event.data1!==undefined?event.data1:event.noteNumber))));
+    const velocity=Number(event.velocity!==undefined?event.velocity:(event.data2!==undefined?event.data2:100));
+    const isNoteOn=name.includes("noteon")||name.includes("note-on")||command===144||command===0x90||command===9;
+    if(!isNoteOn||!Number.isFinite(note)||velocity<=0) return null;
+    return {channel,note,velocity};
+  }
+
+  function onCustomDrumMidiEventsPlayed(args){
+    if(!customDrumKit||!customDrumEnabled||backingModeActive) return;
+    const items=Array.isArray(args)?args:
+      (args&&Array.isArray(args.events)?args.events:
+      (args&&Array.isArray(args.midiEvents)?args.midiEvents:[args]));
+    for(const item of items){
+      const ev=customDrumMidiEventParts(item);
+      if(!ev) continue;
+      // General MIDI percussion is channel 10 (zero-based channel 9). Some
+      // wrappers expose it one-based, so accept 9 or 10.
+      if(ev.channel!==9&&ev.channel!==10) continue;
+      playCustomDrumNote(ev.note,ev.velocity);
+    }
+  }
 
   function setStatus(text, tone) {
     el.status.textContent = text;
@@ -1812,6 +2075,7 @@
     }
     const song = selectedSong();
     if (song) renderSyncPanel(song);
+    setTimeout(applyCustomDrumMuteState,0);
   }
 
   async function useBackingMode() {
@@ -2121,6 +2385,10 @@
   }
 
   window.dtMusicTrainerProAlphaTab = api;
+  if(api.midiEventsPlayed&&typeof api.midiEventsPlayed.on==="function"){
+    api.midiEventsPlayed.on(onCustomDrumMidiEventsPlayed);
+  }
+  loadCustomDrumKit();
 
   function renderTrackButtons(score) {
     el.tracks.innerHTML = "";
@@ -2400,6 +2668,7 @@
     el.loopStart.value = "1";
     el.loopEnd.value = String(Math.min(4, Math.max(1, barCount)));
     renderTrackButtons(score);
+    setTimeout(applyCustomDrumMuteState,0);
     // MuseScore commonly exports notation and TAB as separate parts. Keep them
     // separate internally (for correct ties/effects) but display the detected pair together.
     if(groupedPartPairs>0 && score.tracks && score.tracks.length>1){
@@ -2727,6 +2996,7 @@
   };
   el.stop.onclick = () => {
     if (!playerReady) return;
+    stopCustomDrumSources();
     if (backingModeActive) {
       el.audio.pause();
       el.audio.currentTime = backingLoopEnabled && backingLoopEndMs > backingLoopStartMs ? backingLoopStartMs / 1000 : 0;
@@ -3009,6 +3279,9 @@
     setPlayedNoteHighlighting,
     togglePlayedNoteHighlighting,
     getPlayedNoteHighlighting:()=>playedNoteHighlighting,
+    importCustomDrumKit,
+    setCustomDrumKitEnabled,
+    getCustomDrumKitStatus:customDrumKitStatus,
     stopAudio:stopBackingAudio,
     readInteractiveMetadata,
     diagnoseMusicXml:(xmlText)=> {
