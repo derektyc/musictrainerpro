@@ -224,7 +224,49 @@
     return slices.length?slices:[{start:0,duration:buffer.duration}];
   }
 
+  function oneSecondDrumSheetSlices(buffer){
+    if(!buffer||!Number.isFinite(buffer.duration)) return null;
+    // User-provided "Drum samples.wav": ~25 one-second hit slots.
+    // Keep the whole one-second window so cymbal/tom tails are not chopped by
+    // transient detection.
+    if(buffer.duration<24.5||buffer.duration>25.5) return null;
+    const slices=[];
+    for(let i=0;i<25;i++){
+      const start=i;
+      const end=Math.min(buffer.duration,i+1);
+      if(end-start>0.05) slices.push({start,duration:end-start});
+    }
+    return slices.length>=24?slices:null;
+  }
+
+  function drumSampleSheetMapping(slices){
+    if(!Array.isArray(slices)||slices.length<24) return null;
+    const m={};
+    const pair=(notes,hard,soft)=>{
+      notes.forEach(note=>{m[note]={hard,soft};});
+    };
+
+    // The supplied sheet is arranged in strong/soft pairs. Keep velocity layers
+    // instead of collapsing every articulation to a single hit.
+    pair([35,36],0,1);      // Kick
+    pair([38,40],2,3);      // Snare
+    pair([37,39],4,5);      // Rim / side stick / clap family
+    pair([42,44],6,7);      // Closed / pedal hi-hat
+    pair([56],8,9);         // Auxiliary percussion / cowbell family
+    pair([51,59],10,11);    // Ride
+    pair([53],12,13);       // Ride bell
+    pair([49],14,15);       // Crash 1
+    pair([52,55,57],16,17); // Crash 2 / china / splash family
+    pair([48,50],18,19);    // High tom
+    pair([45,47],20,21);    // Mid tom
+    pair([41,43],22,23);    // Floor tom
+    [46,54].forEach(note=>{m[note]={hard:24,soft:24};}); // Open hat / tambourine family
+    return m;
+  }
+
   function defaultDrumMapping(slices){
+    const sheet=drumSampleSheetMapping(slices);
+    if(sheet) return sheet;
     const mapping={};
     if(!Array.isArray(slices)||!slices.length) return mapping;
     CUSTOM_DRUM_SLOT_ORDER.forEach((slot,index)=>{
@@ -267,7 +309,7 @@
     if(!name.endsWith(".wav")&&!/^audio\/wav/i.test(file.type||"")) throw new Error("Custom drum kit must be a WAV file.");
     const buffer=await decodeCustomDrumBlob(file);
     if(!buffer) throw new Error("Could not decode this WAV file.");
-    const slices=detectDrumSlices(buffer);
+    const slices=oneSecondDrumSheetSlices(buffer)||detectDrumSlices(buffer);
     const record={
       id:"active",
       name:file.name||"Custom Drum Kit.wav",
@@ -326,7 +368,15 @@
   function playCustomDrumNote(note,velocity){
     if(!customDrumKit||!customDrumEnabled||backingModeActive||!customDrumBuffer) return;
     const slices=customDrumKit.slices||[];
-    const index=Number(customDrumKit.mapping&&customDrumKit.mapping[note]);
+    const mapped=customDrumKit.mapping&&customDrumKit.mapping[note];
+    let index;
+    if(mapped&&typeof mapped==="object"){
+      const velocityValue=Math.max(1,Math.min(127,Number(velocity)||100));
+      index=velocityValue>=80?Number(mapped.hard):Number(mapped.soft);
+      if(!Number.isFinite(index)) index=Number(mapped.hard);
+    }else{
+      index=Number(mapped);
+    }
     const slice=slices[Number.isFinite(index)?index:Math.min(Math.max(0,note-35),Math.max(0,slices.length-1))];
     if(!slice) return;
     const ctx=customDrumAudio();
@@ -2388,6 +2438,16 @@
 
   window.dtMusicTrainerProAlphaTab = api;
   if(api.midiEventsPlayed&&typeof api.midiEventsPlayed.on==="function"){
+    try{
+      const noteOnType=alphaTab&&alphaTab.midi&&alphaTab.midi.MidiEventType
+        ? alphaTab.midi.MidiEventType.NoteOn
+        : 0x80;
+      const existing=Array.isArray(api.midiEventsPlayedFilter)?api.midiEventsPlayedFilter.slice():[];
+      if(!existing.includes(noteOnType)) existing.push(noteOnType);
+      api.midiEventsPlayedFilter=existing;
+    }catch(error){
+      console.warn("Could not enable custom drum MIDI event filter",error);
+    }
     api.midiEventsPlayed.on(onCustomDrumMidiEventsPlayed);
   }
   loadCustomDrumKit();
