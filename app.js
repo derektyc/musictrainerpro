@@ -352,9 +352,11 @@
     const channel=Number(event.channel!==undefined?event.channel:event.midiChannel);
     const note=Number(event.noteKey!==undefined?event.noteKey:(event.note!==undefined?event.note:(event.key!==undefined?event.key:(event.data1!==undefined?event.data1:event.noteNumber))));
     const velocity=Number(event.velocity!==undefined?event.velocity:(event.data2!==undefined?event.data2:100));
-    const isNoteOn=name.includes("noteon")||name.includes("note-on")||command===144||command===0x90||command===9;
+    const statusNoteOn=Number.isFinite(command)&&((command&0xF0)===0x90);
+    const isNoteOn=name.includes("noteon")||name.includes("note-on")||statusNoteOn||command===144||command===0x90||command===9||command===1;
     if(!isNoteOn||!Number.isFinite(note)||velocity<=0) return null;
-    return {channel,note,velocity};
+    const wrapperChannel=Number(item&&item.channel);
+    return {channel:Number.isFinite(channel)?channel:wrapperChannel,note,velocity};
   }
 
   function onCustomDrumMidiEventsPlayed(args){
