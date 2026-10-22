@@ -439,6 +439,24 @@
     return okay;
   }
 
+  function practiceTempoInfo(){
+    const a=api();
+    const score=a&&a.score;
+    const baseBpm=Math.max(1,Number(score&&score.tempo)||120);
+    const speedFactor=Math.max(0.25,Number(currentSpeed)||100)/100;
+    const effectiveBpm=baseBpm*speedFactor;
+
+    let beats=4;
+    try{
+      const bars=score&&Array.isArray(score.masterBars)?score.masterBars:[];
+      const barIndex=Math.max(0,Math.min(bars.length-1,(Number(currentSettings.startBar)||1)-1));
+      const numerator=Number(bars[barIndex]&&bars[barIndex].timeSignatureNumerator);
+      if(Number.isFinite(numerator)&&numerator>=1&&numerator<=12) beats=Math.round(numerator);
+    }catch(e){}
+
+    return {baseBpm,effectiveBpm,beats};
+  }
+
   function beep(strong){
     try{
       const Ctx = window.AudioContext || window.webkitAudioContext;
@@ -461,9 +479,10 @@
   async function countIn(){
     if(!currentSettings.countIn) return true;
     const token = ++countdownToken;
-    const beatMs = Math.round(600 * (100 / Math.max(25,currentSpeed)));
+    const tempo=practiceTempoInfo();
+    const beatMs=Math.max(80,Math.round(60000/tempo.effectiveBpm));
     if(el.countdown) el.countdown.classList.add("show");
-    for(let beat=1;beat<=4;beat++){
+    for(let beat=1;beat<=tempo.beats;beat++){
       if(token !== countdownToken) return false;
       if(el.countdownNumber) el.countdownNumber.textContent = String(beat);
       beep(beat===1);
