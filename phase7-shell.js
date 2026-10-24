@@ -2072,6 +2072,13 @@
     if(api&&api.renderFinished&&typeof api.renderFinished.on==="function"){
       api.renderFinished.on(()=>requestAnimationFrame(positionLoopHandles));
     }
+    if(api&&api.scoreLoaded&&typeof api.scoreLoaded.on==="function"){
+      api.scoreLoaded.on(()=>{
+        loopStartBeat=null;
+        loopEndBeat=null;
+        setLoopHandlesVisible(false);
+      });
+    }
   }
 
   function syncBackingPicker(){
