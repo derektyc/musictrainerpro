@@ -1947,8 +1947,12 @@
 
     const countIn=$("p77CountIn");
     if(countIn){
-      const on=!!(practiceCountIn&&practiceCountIn.checked);
-      countIn.disabled=active||!practiceCountIn;
+      const oldCountIn=$("countInBtn");
+      const on=!!(
+        (oldCountIn&&oldCountIn.classList.contains("active")) ||
+        (practiceCountIn&&practiceCountIn.checked)
+      );
+      countIn.disabled=active||(!practiceCountIn&&!oldCountIn);
       countIn.classList.toggle("active",on);
       const label=countIn.querySelector("span"); if(label) label.textContent=on?"Count In On":"Count In";
     }
@@ -1997,10 +2001,29 @@
     if(metro) metro.onclick=()=>{practiceClick("metroBtn");setTimeout(syncPracticeChrome,30);};
     if(countIn) countIn.onclick=()=>{
       if(practiceSessionActive()) return;
-      const old=$("practiceCountIn");
-      if(!old) return;
-      old.checked=!old.checked;
-      old.dispatchEvent(new Event("change",{bubbles:true}));
+      const practiceToggle=$("practiceCountIn");
+      const playerToggle=$("countInBtn");
+      const currentlyOn=!!(
+        (playerToggle&&playerToggle.classList.contains("active")) ||
+        (practiceToggle&&practiceToggle.checked)
+      );
+      const next=!currentlyOn;
+
+      if(practiceToggle){
+        practiceToggle.checked=next;
+        practiceToggle.dispatchEvent(new Event("change",{bubbles:true}));
+      }
+
+      if(playerToggle&&!playerToggle.disabled){
+        const playerOn=playerToggle.classList.contains("active");
+        if(playerOn!==next) playerToggle.click();
+      }else{
+        try{
+          const alpha=window.dtMusicTrainerProAlphaTab;
+          if(alpha) alpha.countInVolume=next?1:0;
+        }catch(error){}
+      }
+
       setTimeout(syncPracticeChrome,30);
     };
     if(clearLoop) clearLoop.onclick=()=>{
