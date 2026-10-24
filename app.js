@@ -3155,6 +3155,55 @@
   });
   el.dropzone.addEventListener("drop", (event) => addFilesToLibrary(event.dataTransfer.files, ""));
 
+  function backingCountInInfo(){
+    const score=api&&api.score;
+    const bpm=Math.max(30,Math.min(300,Number(score&&score.tempo)||120));
+    let beats=4;
+    try{
+      const bars=score&&Array.isArray(score.masterBars)?score.masterBars:[];
+      if(bars.length){
+        const tick=Math.max(0,Number(api.tickPosition)||0);
+        let current=bars[0];
+        for(const bar of bars){
+          const start=Math.max(0,Number(masterBarPlaybackStart(bar))||0);
+          if(start<=tick) current=bar;
+          else break;
+        }
+        const numerator=Number(current&&current.timeSignatureNumerator);
+        if(Number.isFinite(numerator)&&numerator>=1&&numerator<=12) beats=Math.round(numerator);
+      }
+    }catch(error){}
+    return {bpm,beats};
+  }
+
+  function backingCountInClick(strong){
+    try{
+      const ctx=customDrumAudio();
+      if(!ctx) return;
+      const osc=ctx.createOscillator();
+      const gain=ctx.createGain();
+      osc.type="square";
+      osc.frequency.value=strong?1200:880;
+      gain.gain.setValueAtTime(0.0001,ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.16,ctx.currentTime+0.005);
+      gain.gain.exponentialRampToValueAtTime(0.0001,ctx.currentTime+0.08);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(); osc.stop(ctx.currentTime+0.09);
+    }catch(error){}
+  }
+
+  async function runBackingCountIn(){
+    if(!el.countIn||!el.countIn.classList.contains("active")) return true;
+    const info=backingCountInInfo();
+    const beatMs=Math.max(100,Math.round(60000/info.bpm));
+    for(let beat=1;beat<=info.beats;beat++){
+      backingCountInClick(beat===1);
+      await new Promise(resolve=>setTimeout(resolve,beatMs));
+      if(!backingModeActive) return false;
+    }
+    return true;
+  }
+
   el.play.onclick = async () => {
     if (!playerReady) return;
     if (backingModeActive) {
@@ -3163,13 +3212,16 @@
       try {
         await ensureBackingAudio(song);
         if (el.audio.paused) {
-          playAnchorAudioTime = backingLoopEnabled && backingLoopEndMs > backingLoopStartMs
-            ? backingLoopStartMs / 1000
-            : Math.max(0,Number(el.audio.currentTime)||0);
-          if (backingLoopEnabled && backingLoopEndMs > backingLoopStartMs) {
-            el.audio.currentTime = playAnchorAudioTime;
-            syncCursorFromBacking();
+          let anchor=Math.max(0,Number(el.audio.currentTime)||0);
+          if(backingLoopEnabled&&backingLoopEndMs>backingLoopStartMs){
+            const start=backingLoopStartMs/1000,end=backingLoopEndMs/1000;
+            if(anchor<start||anchor>=end) anchor=start;
           }
+          playAnchorAudioTime=anchor;
+          el.audio.currentTime=anchor;
+          syncCursorFromBacking();
+          const counted=await runBackingCountIn();
+          if(!counted) return;
           await el.audio.play();
         } else {
           el.audio.pause();
@@ -3182,22 +3234,25 @@
       }
       return;
     }
+
     if (!el.audio.paused) el.audio.pause();
     if (scorePlaying) {
       try { api.pause(); } catch (error) {}
       try { api.tickPosition = Math.max(0,Number(playAnchorTick)||0); } catch (error) {}
       el.play.textContent = "▶";
       scheduleLookAheadScroll(true);
-    } else {
-      playAnchorTick = api.playbackRange && api.isLooping
-        ? Math.max(0,Number(api.playbackRange.startTick)||0)
-        : Math.max(0,Number(api.tickPosition)||0);
-      if (api.playbackRange && api.isLooping) {
-        try { api.tickPosition = playAnchorTick; } catch (error) {}
-      }
-      if (typeof api.play === "function") api.play();
-      else api.playPause();
+      return;
     }
+
+    let anchor=Math.max(0,Number(api.tickPosition)||0);
+    if(api.playbackRange&&api.isLooping){
+      const start=Math.max(0,Number(api.playbackRange.startTick)||0);
+      const end=Math.max(start+1,Number(api.playbackRange.endTick)||start+1);
+      if(anchor<start||anchor>=end) anchor=start;
+    }
+    playAnchorTick=anchor;
+    try { api.tickPosition=anchor; } catch(error){}
+    api.playPause();
   };
   el.stop.onclick = () => {
     if (!playerReady) return;
@@ -3212,9 +3267,11 @@
     }
   };
   el.countIn.onclick = () => {
-    if (backingModeActive) return;
     el.countIn.classList.toggle("active");
-    api.countInVolume = el.countIn.classList.contains("active") ? 1 : 0;
+    api.countInVolume = (!backingModeActive && el.countIn.classList.contains("active")) ? 1 : 0;
+    window.dispatchEvent(new CustomEvent("dtmtp:practice-display-changed",{
+      detail:{countIn:el.countIn.classList.contains("active")}
+    }));
   };
   el.metro.onclick = () => {
     el.metro.classList.toggle("active");
