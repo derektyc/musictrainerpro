@@ -149,7 +149,6 @@
             <div class="p7-practice-top-actions">
               <button id="p77PracticeLibrary" class="p7-secondary" type="button">Library</button>
               <button id="p7PracticeAssignments" class="p7-secondary" type="button">Assignments</button>
-              <button id="p77ToolsToggle" class="p7-secondary" type="button">Advanced Tools</button>
             </div>
           </div>
           <div id="p7StudentPracticeGuide" class="p7-student-practice-guide" hidden>
@@ -167,40 +166,28 @@
                   <span id="p77SongMeta">Choose a song from Library or an assignment.</span>
                 </div>
                 <div class="p77-score-actions">
-                  <button id="p77OpenPdf" class="p77-small-control" type="button" disabled>PDF</button>
-                  <div class="p77-source-switch">
-                    <button id="p77Synth" type="button">Synth</button>
-                    <button id="p77Backing" type="button" disabled>Backing</button>
-                  </div>
-                  <label id="p77AudioVersionWrap" class="p77-audio-version" hidden>
-                    <span>Audio</span>
-                    <select id="p77AudioVersion" disabled><option value="">No backing</option></select>
-                  </label>
+                  <span id="p77Position" class="p77-position">00:00 / 00:00</span>
                 </div>
               </div>
               <div id="p77PracticeProgress" class="p77-practice-progress" hidden><i id="p77PracticeProgressFill"></i></div>
               <div id="p77EngineHost" class="p77-engine-host"></div>
-              <div id="p77ControlDock" class="p77-control-dock">
-                <div class="p77-transport">
+              <div id="p77ControlDock" class="p77-control-dock p77-simple-dock">
+                <div class="p77-transport p77-simple-transport">
                   <button id="p77Restart" class="p77-control" type="button" disabled title="Restart">↺<span>Restart</span></button>
-                  <button id="p77Play" class="p77-control p77-play" type="button" disabled title="Play / Pause">▶<span>Play</span></button>
-                  <button id="p77Session" class="p77-control p77-session" type="button" disabled>Start Practice</button>
+                  <button id="p77Play" class="p77-control p77-play p77-main-play" type="button" disabled title="Play / Pause">▶<span>Play</span></button>
                   <button id="p77Loop" class="p77-control" type="button" disabled title="Loop">↻<span>Loop</span></button>
-                  <button id="p77Metro" class="p77-control" type="button" disabled title="Metronome">♩<span>Metro</span></button>
+                  <button id="p77Metro" class="p77-control" type="button" disabled title="Metronome">♩<span>Metronome</span></button>
                   <button id="p77CountIn" class="p77-control" type="button" title="Count in before practice">1·2<span>Count In</span></button>
-                  <button id="p77Drums" class="p77-control" type="button" title="Custom drum samples">🥁<span>Drums</span></button>
-                  <input id="p77DrumFile" type="file" accept=".wav,audio/wav,audio/x-wav" hidden>
-                  <button id="p77Highlights" class="p77-control" type="button" title="Played-note highlighting">◉<span>Notes</span></button>
-                  <button id="p77ClearLoop" class="p77-control p77-clear-loop" type="button" hidden title="Clear loop">×<span>Clear</span></button>
                 </div>
-                <div class="p77-live-info">
-                  <span id="p77Position">00:00 / 00:00</span>
-                  <span id="p77ModePill">Synth</span>
+                <div class="p77-speed-control" aria-label="Playback speed">
+                  <span class="p77-speed-label">Speed</span>
+                  <div class="p77-speed-stepper">
+                    <button id="p77SpeedDown" type="button" disabled aria-label="Decrease speed">−</button>
+                    <div id="p77SpeedDisplay" class="p77-speed-display" tabindex="0" role="spinbutton" aria-valuemin="25" aria-valuemax="150" aria-valuenow="100" title="Scroll mouse wheel to adjust speed">100%</div>
+                    <button id="p77SpeedUp" type="button" disabled aria-label="Increase speed">+</button>
+                  </div>
                 </div>
-                <div class="p77-sliders">
-                  <label><span>Speed</span><input id="p77Speed" type="range" min="25" max="150" value="100" disabled><b id="p77SpeedValue">100%</b></label>
-                  <label class="p77-zoom-control"><span>Zoom</span><input id="p77Zoom" type="range" min="50" max="150" step="10" value="100"><b id="p77ZoomValue">100%</b></label>
-                </div>
+                <button id="p77Session" class="p77-session p77-session-large" type="button" disabled>Start Practice</button>
               </div>
               <div id="p77SelectionHint" class="p77-selection-hint" hidden>Drag across the score to select the bars you want to loop.</div>
               <div id="p77GuidedHint" class="p77-guided-hint" hidden>Guided Practice controls the loop and speed automatically.</div>
@@ -1943,33 +1930,19 @@
       sessionButton.disabled=active?!(stop&&!stop.disabled):!(start&&!start.disabled);
     }
 
-    const speed=$("p77Speed"), speedValue=$("p77SpeedValue");
-    if(speed&&oldSpeed){
-      speed.value=oldSpeed.value;
-      speed.disabled=active||oldSpeed.disabled;
+    const speedDisplay=$("p77SpeedDisplay"), speedDown=$("p77SpeedDown"), speedUp=$("p77SpeedUp");
+    const speedValue=($("speedValue")&&$("speedValue").textContent)||((oldSpeed&&oldSpeed.value)||100)+"%";
+    if(speedDisplay){
+      speedDisplay.textContent=speedValue;
+      const numeric=Math.max(25,Math.min(150,parseInt(oldSpeed&&oldSpeed.value||100,10)||100));
+      speedDisplay.setAttribute("aria-valuenow",String(numeric));
+      speedDisplay.classList.toggle("disabled",active||!oldSpeed||oldSpeed.disabled);
     }
-    if(speedValue) speedValue.textContent=($("speedValue")&&$("speedValue").textContent)||((oldSpeed&&oldSpeed.value)||100)+"%";
-
-    const zoom=$("p77Zoom"), zoomValue=$("p77ZoomValue");
-    if(zoom&&oldZoom){zoom.value=oldZoom.value;zoom.disabled=oldZoom.disabled;}
-    if(zoomValue) zoomValue.textContent=($("zoomValue")&&$("zoomValue").textContent)||((oldZoom&&oldZoom.value)||100)+"%";
+    if(speedDown) speedDown.disabled=active||!oldSpeed||oldSpeed.disabled;
+    if(speedUp) speedUp.disabled=active||!oldSpeed||oldSpeed.disabled;
 
     const pos=$("p77Position");
     if(pos) pos.textContent=($("position")&&$("position").textContent)||"00:00 / 00:00";
-
-    const synthProxy=$("p77Synth"), backingProxy=$("p77Backing");
-    const backingActive=!!(backing&&backing.classList.contains("active-source"));
-    if(synthProxy){
-      synthProxy.disabled=active||!synth||synth.disabled;
-      synthProxy.classList.toggle("active",!backingActive);
-    }
-    if(backingProxy){
-      backingProxy.disabled=active||!backing||backing.disabled;
-      backingProxy.classList.toggle("active",backingActive);
-    }
-
-    const mode=$("p77ModePill");
-    if(mode) mode.textContent=backingActive?"Synced Backing":"Synth";
 
     const metro=$("p77Metro");
     if(metro){
@@ -1984,54 +1957,6 @@
       countIn.classList.toggle("active",on);
       const label=countIn.querySelector("span"); if(label) label.textContent=on?"Count In":"Count Off";
     }
-    const drums=$("p77Drums");
-    if(drums){
-      let status={loaded:false,enabled:false,name:"",slices:0};
-      try{
-        const lib=window.DTMusicTrainerLibrary;
-        if(lib&&typeof lib.getCustomDrumKitStatus==="function") status=lib.getCustomDrumKitStatus()||status;
-      }catch(error){}
-      drums.classList.toggle("active",!!status.enabled);
-      drums.title=status.loaded
-        ? ((status.enabled?"Custom drums active":"Built-in synth drums active")+" · "+(status.name||"Custom Drum Kit"))
-        : "Import custom drum samples (WAV)";
-      const label=drums.querySelector("span");
-      if(label) label.textContent=status.loaded?(status.enabled?"Custom":"Synth"):"Drums";
-    }
-
-    const highlights=$("p77Highlights");
-    if(highlights){
-      let on=false;
-      try{
-        const lib=window.DTMusicTrainerLibrary;
-        on=!!(lib&&typeof lib.getPlayedNoteHighlighting==="function"&&lib.getPlayedNoteHighlighting());
-      }catch(error){}
-      highlights.classList.toggle("active",on);
-      const label=highlights.querySelector("span"); if(label) label.textContent=on?"Notes On":"Notes Off";
-    }
-
-    const audioVersion=$("p77AudioVersion"), audioWrap=$("p77AudioVersionWrap"), oldAudioVersion=$("audioVersionSelect");
-    if(audioVersion&&audioWrap){
-      const options=oldAudioVersion?Array.from(oldAudioVersion.options||[]):[];
-      const signature=options.map(o=>o.value+"|"+o.textContent).join("\n");
-      if(audioVersion.dataset.optionsSignature!==signature){
-        audioVersion.innerHTML="";
-        options.forEach(o=>{
-          const copy=document.createElement("option");
-          copy.value=o.value;
-          copy.textContent=o.textContent;
-          audioVersion.appendChild(copy);
-        });
-        audioVersion.dataset.optionsSignature=signature;
-      }
-      if(oldAudioVersion) audioVersion.value=oldAudioVersion.value;
-      audioVersion.disabled=active||!oldAudioVersion||oldAudioVersion.disabled||options.length<1;
-      audioWrap.hidden=!oldAudioVersion||options.length<1||(!options.some(o=>o.value));
-    }
-
-    const pdfProxy=$("p77OpenPdf");
-    if(pdfProxy) pdfProxy.disabled=!pdf||pdf.disabled;
-
     const hint=$("p77GuidedHint");
     if(hint){
       hint.hidden=!active;
@@ -2047,13 +1972,6 @@
       if(progressFill) progressFill.style.width=oldProgress&&oldProgress.style.width?oldProgress.style.width:"0%";
     }
 
-    const tools=$("p77ToolsToggle");
-    if(tools){
-      tools.hidden=!!(session&&session.role==="student");
-      tools.classList.toggle("active",practiceToolsOpen);
-      tools.textContent=practiceToolsOpen?"Hide Advanced Tools":"Advanced Tools";
-    }
-
     const library=$("p77PracticeLibrary");
     if(library) library.hidden=!!(session&&session.role==="student");
 
@@ -2066,8 +1984,8 @@
   }
 
   function bindPracticeChrome(){
-    const play=$("p77Play"), restart=$("p77Restart"), loop=$("p77Loop"), sessionButton=$("p77Session"), metro=$("p77Metro"), countIn=$("p77CountIn"), drums=$("p77Drums"), drumFile=$("p77DrumFile"), highlights=$("p77Highlights"), clearLoop=$("p77ClearLoop");
-    const speed=$("p77Speed"), zoom=$("p77Zoom"), synth=$("p77Synth"), backing=$("p77Backing"), pdf=$("p77OpenPdf"), audioVersion=$("p77AudioVersion");
+    const play=$("p77Play"), restart=$("p77Restart"), loop=$("p77Loop"), sessionButton=$("p77Session"), metro=$("p77Metro"), countIn=$("p77CountIn"), clearLoop=$("p77ClearLoop");
+    const speedDisplay=$("p77SpeedDisplay"), speedDown=$("p77SpeedDown"), speedUp=$("p77SpeedUp");
 
     if(play) play.onclick=()=>practiceClick("playBtn");
     if(loop) loop.onclick=()=>{
@@ -2096,39 +2014,6 @@
       old.dispatchEvent(new Event("change",{bubbles:true}));
       setTimeout(syncPracticeChrome,30);
     };
-    if(drums) drums.onclick=async()=>{
-      if(practiceSessionActive()) return;
-      const lib=window.DTMusicTrainerLibrary;
-      if(!lib) return;
-      const status=typeof lib.getCustomDrumKitStatus==="function"?lib.getCustomDrumKitStatus():null;
-      if(!status||!status.loaded){
-        if(drumFile){drumFile.value="";drumFile.click();}
-        return;
-      }
-      if(typeof lib.setCustomDrumKitEnabled==="function"){
-        await lib.setCustomDrumKitEnabled(!status.enabled);
-        setTimeout(syncPracticeChrome,30);
-      }
-    };
-    if(drumFile) drumFile.onchange=async()=>{
-      const file=drumFile.files&&drumFile.files[0];
-      if(!file) return;
-      try{
-        const lib=window.DTMusicTrainerLibrary;
-        if(!lib||typeof lib.importCustomDrumKit!=="function") throw new Error("Custom drum engine is unavailable.");
-        await lib.importCustomDrumKit(file);
-        setTimeout(syncPracticeChrome,30);
-      }catch(error){
-        alert(error&&error.message?error.message:"Could not import the drum samples.");
-      }
-    };
-    if(highlights) highlights.onclick=()=>{
-      try{
-        const lib=window.DTMusicTrainerLibrary;
-        if(lib&&typeof lib.togglePlayedNoteHighlighting==="function") lib.togglePlayedNoteHighlighting();
-      }catch(error){}
-      setTimeout(syncPracticeChrome,30);
-    };
     if(clearLoop) clearLoop.onclick=()=>{
       practiceLoopSelectMode=false;
       practiceClick("clearLoopBtn");
@@ -2138,34 +2023,36 @@
       if(practiceSessionActive()) practiceClick("practiceStopBtn");
       else practiceClick("practiceStartBtn");
     };
-    if(speed) speed.oninput=()=>{
+    const stepPracticeSpeed=(delta)=>{
       if(practiceSessionActive()) return;
       const old=$("speed");
-      if(old&&!old.disabled){old.value=speed.value;old.dispatchEvent(new Event("input",{bubbles:true}));}
-      syncPracticeChrome();
-    };
-    if(zoom) zoom.oninput=()=>{
-      const old=$("zoom");
-      if(old&&!old.disabled){old.value=zoom.value;old.dispatchEvent(new Event("input",{bubbles:true}));}
-      syncPracticeChrome();
-    };
-    if(synth) synth.onclick=()=>{if(!practiceSessionActive())practiceClick("synthModeBtn");setTimeout(syncPracticeChrome,80);};
-    if(backing) backing.onclick=()=>{if(!practiceSessionActive())practiceClick("backingModeBtn");setTimeout(syncPracticeChrome,80);};
-    if(audioVersion) audioVersion.onchange=()=>{
-      if(practiceSessionActive()) return;
-      const old=$("audioVersionSelect");
       if(!old||old.disabled) return;
-      old.value=audioVersion.value;
-      old.dispatchEvent(new Event("change",{bubbles:true}));
-      setTimeout(syncPracticeChrome,120);
+      const min=Number(old.min)||25, max=Number(old.max)||150;
+      const next=Math.max(min,Math.min(max,(parseInt(old.value,10)||100)+delta));
+      if(next===Number(old.value)) return;
+      old.value=String(next);
+      old.dispatchEvent(new Event("input",{bubbles:true}));
+      syncPracticeChrome();
     };
-    if(pdf) pdf.onclick=()=>practiceClick("openPdfBtn");
+    if(speedDown) speedDown.onclick=()=>stepPracticeSpeed(-1);
+    if(speedUp) speedUp.onclick=()=>stepPracticeSpeed(1);
+    if(speedDisplay){
+      speedDisplay.addEventListener("wheel",e=>{
+        if(practiceSessionActive()) return;
+        e.preventDefault();
+        stepPracticeSpeed(e.deltaY<0?1:-1);
+      },{passive:false});
+      speedDisplay.addEventListener("keydown",e=>{
+        if(e.key==="ArrowUp"||e.key==="ArrowRight"){e.preventDefault();stepPracticeSpeed(1);}
+        else if(e.key==="ArrowDown"||e.key==="ArrowLeft"){e.preventDefault();stepPracticeSpeed(-1);}
+      });
+    }
 
     if(practiceChromeObserver){try{practiceChromeObserver.disconnect();}catch(error){}}
     practiceChromeObserver=new MutationObserver(()=>syncPracticeChrome());
     [
-      "viewerTitle","viewerMeta","playBtn","loopBtn","metroBtn","practiceCountIn","loopStatus","speed","speedValue","zoom","zoomValue","position",
-      "synthModeBtn","backingModeBtn","audioVersionSelect","openPdfBtn","practiceStartBtn","practiceStopBtn","practiceRetryBtn","practiceModeSection","practiceProgressFill"
+      "viewerTitle","viewerMeta","playBtn","loopBtn","metroBtn","practiceCountIn","loopStatus","speed","speedValue","position",
+      "practiceStartBtn","practiceStopBtn","practiceRetryBtn","practiceModeSection","practiceProgressFill"
     ].forEach(id=>{
       const node=$(id);
       if(node) practiceChromeObserver.observe(node,{attributes:true,childList:true,characterData:true,subtree:true});
