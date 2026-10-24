@@ -160,7 +160,7 @@
             <div class="p7-guide-song"><strong id="p7GuideSong">Assignment</strong><span id="p7GuideBars">Ready to practise</span></div>
             <div class="p7-guide-stat"><strong id="p7GuideSpeed">—</strong><span>Speed</span></div>
             <div class="p7-guide-stat"><strong id="p7GuideReps">0 / 0</strong><span>Reps</span></div>
-            <div class="p7-guide-message" id="p7GuideMessage">Press Start Practice when you're ready.</div>
+            <div class="p7-guide-message" id="p7GuideMessage">Press Play when you're ready.</div>
           </div>
           <div class="p7-practice-body">
             <div id="p7PracticeMain" class="p7-practice-main">
@@ -2353,7 +2353,7 @@
     else if(a) $("p7GuideSpeed").textContent=Math.round(Number(a.settings&&a.settings.startSpeed)||100)+"%";
     if(options&&options.repsText) $("p7GuideReps").textContent=options.repsText;
     else if(a) $("p7GuideReps").textContent="0 / "+Math.max(1,Number(a.settings&&a.settings.repsPerStep)||1);
-    $("p7GuideMessage").textContent=(options&&options.message)||"Press Start Practice when you're ready.";
+    $("p7GuideMessage").textContent=(options&&options.message)||"Press Play when you're ready.";
     if(a){
       $("p7PracticeHeading").textContent=a.songTitle||"Practice";
       $("p7PracticeSub").textContent="Bars "+(a.settings&&a.settings.startBar||1)+"–"+(a.settings&&a.settings.endBar||1);
