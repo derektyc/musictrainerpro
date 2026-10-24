@@ -230,3 +230,12 @@ button:disabled{opacity:.45;cursor:not-allowed}
   .position{margin-left:auto}
   .audio-row{grid-template-columns:1fr}
 }
+
+
+/* 2026-10-24 loop-handle cleanup */
+.at-selection,.at-selection *{background:transparent!important}
+body.p77-loop-dragging,
+body.p77-loop-dragging *{
+  user-select:none!important;
+  -webkit-user-select:none!important;
+}
