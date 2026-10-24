@@ -344,3 +344,58 @@ Pending live checks:
 - Confirm a student receives only the assigned material and never sees the teacher's full Library catalogue.
 - Verify the larger font scale visually on desktop, tablet and phone, especially Library badges, Dashboard metadata, Profile history, Assignment Wizard labels and Practice controls.
 - Confirm the larger type does not create overflow at 360–430px widths.
+
+
+## Practice transport regression — 2026-10-24
+
+Real fixture files used:
+- Rockschool Drums Debut - Yellow(1).mxl
+- RGP G0 Yellow (full) with vocals.mp3
+- RGP G0 Yellow (bt click) with vocals.mp3
+
+Fixture validation:
+- MXL parses successfully as one Drum Kit part with 19 measures, 4/4 time and tempo 87 BPM.
+- Score contains 235 note/rest events, including 221 unpitched percussion notes across voices 1 and 2.
+- Full backing decodes successfully at about 64.29 seconds.
+- Click backing decodes successfully at about 66.28 seconds.
+- Beat/onset analysis shows the click-backing musical grid is about 1.974 seconds later than the full backing, confirming each backing version requires its own sync-point map.
+- Both MP3s seek/decode successfully at the expected bar-2 test positions.
+
+Automated/source regression checks passed:
+- Main JavaScript files parse successfully.
+- Application CSS files have balanced braces.
+- Static index HTML has no duplicate IDs.
+- Practice shell has no missing direct DOM references.
+- Space triggers Play/Pause only in Practice and repeated keydown events are ignored.
+- S triggers Stop only in Practice and repeated keydown events are ignored.
+- Synth playback captures the cursor position at Play and Pause returns to that captured position.
+- Starting at bar 2, playing forward, pausing and playing again preserves the bar-2 anchor.
+- Moving the cursor while paused establishes a new anchor on the next Play.
+- With Loop enabled, an anchor inside A-B is preserved; an anchor outside A-B clamps to A.
+- Backing playback derives its start from the score cursor through score-tick -> audio-time mapping rather than stale audio.currentTime.
+- Backing Count In remains enabled, is speed-aware, and can be cancelled by Play/Pause, Stop, source switching or audio-version switching.
+- Rapid Synth Play/Pause during count-in is guarded by an explicit play-intent state.
+- Backing loop boundaries use the exact playback-range ticks instead of collapsing draggable A/B positions to whole bars.
+- A/B drag coordinates use alphaTab's .at-surface coordinate scaling (offsetWidth/rendered width and offsetHeight/rendered height).
+- A/B loop state is cleared when a new score loads.
+- Backing versions keep separate sync-point maps and a newly selected unsynced backing version auto-syncs before synced playback resumes.
+- Practice transport cache-busting is updated so browsers request the current app.js and phase7-shell.js.
+- A standalone transport state-machine regression harness passed 10 assertions covering bar-2 pause-return, new cursor anchors, loop clamping, backing timing offsets, speed-aware count-in duration and count-in cancellation.
+
+Bugs fixed during this regression:
+- Backing Count In logic existed but the core UI still disabled Count In in backing mode.
+- Backing Count In could stack multiple asynchronous count-ins after repeated Play presses.
+- Pause-return relied on a potentially stale player-state flag.
+- Backing Play used stale audio.currentTime instead of the notation cursor when choosing a new start position.
+- Backing draggable loops were reduced to whole-bar audio boundaries.
+- Loop-handle drag math used the outer alphaTab element instead of alphaTab's rendered .at-surface coordinate system.
+- Loop Beat objects could leak into the next loaded score.
+- Switching backing versions while synced could leave a version without a usable sync map.
+- The deployment query string was not refreshed after some transport changes, allowing older cached JavaScript to remain active.
+- Removed stale "Press Start Practice" guidance after the simplified transport removed that button.
+
+Still requires a real deployed-browser check:
+- Visually drag A/B on the deployed alphaTab score at multiple zoom levels and confirm the handles stay aligned with the intended beats.
+- Audibly confirm Synth and backing Count In timing on the deployed site.
+- Confirm browser audio permissions/autoplay policies on the user's normal desktop/mobile browsers.
+- Confirm Google Drive/Firebase-backed audio-version hydration in an authenticated account.
