@@ -99,6 +99,9 @@
   let backingTracksMuted = false;
   let playAnchorTick = 0;
   let playAnchorAudioTime = 0;
+  let pendingPauseReturnTick = null;
+  let backingCountInToken = 0;
+  let backingCountInRunning = false;
   let playedNoteHighlighting = false;
   let synthVolumeBeforeBacking = 1;
   let customDrumKit = null;
@@ -2232,14 +2235,16 @@
     el.backingMode.classList.toggle("active-source", backingModeActive);
     if (backingModeActive) {
       el.audioModeNote.textContent = "Synced Backing mode: the real MP3/WAV drives the notation cursor.";
-      el.countIn.disabled = true;
+      el.countIn.disabled = !playerReady;
       el.metro.disabled = !playerReady;
       el.speed.disabled = !playerReady;
+      api.countInVolume = 0;
     } else {
       el.audioModeNote.textContent = "Synth mode. Switch to Synced Backing after creating sync points.";
       el.countIn.disabled = !playerReady;
       el.metro.disabled = !playerReady;
       el.speed.disabled = !playerReady;
+      api.countInVolume = el.countIn.classList.contains("active") ? 1 : 0;
     }
     const song = selectedSong();
     if (song) renderSyncPanel(song);
@@ -2262,11 +2267,18 @@
         song = await getSong(selectedSongId);
       }
       if (!song || normalizeSyncPoints(song.syncPoints).length < 2) throw new Error("At least two sync points are required.");
+      cancelBackingCountIn();
       if (scorePlaying) {
-        try { api.playPause(); } catch (e) {}
+        try { api.pause(); } catch (e) {}
       }
       backingModeActive = true;
       applySongSyncPoints(song);
+      if(api.playbackRange&&el.loop.classList.contains("active")){
+        backingLoopEnabled=true;
+        api.isLooping=false;
+        updateBackingLoopTimesFromTicks(api.playbackRange.startTick,api.playbackRange.endTick);
+      }
+      el.audio.playbackRate=Math.max(0.25,Math.min(1.5,(parseInt(el.speed.value,10)||100)/100));
       updateSourceUI();
       syncCursorFromBacking();
       if (!el.audio.paused) startBackingCursorDriver();
@@ -2279,12 +2291,14 @@
   }
 
   function useSynthMode() {
+    cancelBackingCountIn();
     stopBackingSyncTimer();
     el.audio.pause();
     pauseBackingCursorDriver(true);
     backingModeActive = false;
     backingLoopEnabled = false;
     clearAppliedSyncPoints();
+    if(api.playbackRange&&el.loop.classList.contains("active")) api.isLooping=true;
     updateSourceUI();
     setStatus("Synth mode ready.", "ok");
   }
@@ -2377,6 +2391,16 @@
     }
   }
 
+  function updateBackingLoopTimesFromTicks(startScoreTick,endScoreTick) {
+    if (!backingModeActive || !api.score) return;
+    backingLoopStartMs = backingAudioTimeFromScoreTick(Math.max(0,Number(startScoreTick)||0));
+    backingLoopEndMs = backingAudioTimeFromScoreTick(Math.max(0,Number(endScoreTick)||0));
+    if (backingLoopEndMs <= backingLoopStartMs) {
+      backingLoopStartMs = 0;
+      backingLoopEndMs = (Number(el.audio.duration) || 0) * 1000;
+    }
+  }
+
   function updateBackingLoopTimes(startBar, endBar) {
     if (!backingModeActive || !api.score) return;
     const startScoreTick = scoreTickAtBarStart(startBar - 1);
@@ -2387,12 +2411,7 @@
           barOccurence:finalBarOccurrence(api.score.masterBars.length-1),
           barPosition:1
         });
-    backingLoopStartMs = backingAudioTimeFromScoreTick(startScoreTick);
-    backingLoopEndMs = backingAudioTimeFromScoreTick(endScoreTick);
-    if (backingLoopEndMs <= backingLoopStartMs) {
-      backingLoopStartMs = 0;
-      backingLoopEndMs = (Number(el.audio.duration) || 0) * 1000;
-    }
+    updateBackingLoopTimesFromTicks(startScoreTick,endScoreTick);
   }
 
   function syncCursorFromBacking() {
@@ -2652,7 +2671,7 @@
     el.loopEnd.value=String(mapped.endBar);
     api.isLooping=!backingModeActive;
     backingLoopEnabled=backingModeActive;
-    if(backingModeActive) updateBackingLoopTimes(mapped.startBar,mapped.endBar);
+    if(backingModeActive) updateBackingLoopTimesFromTicks(range.startTick,range.endTick);
     el.loop.classList.add("active");
     el.loopStatus.textContent="Looping bars "+mapped.startBar+"–"+mapped.endBar+(backingModeActive?" with backing track.":".");
     window.dispatchEvent(new CustomEvent("dtmtp:loop-range-changed",{
@@ -2902,6 +2921,14 @@
     scorePlaying = event.state === alphaTab.synth.PlayerState.Playing;
     if (!backingModeActive) el.play.textContent = scorePlaying ? "Ⅱ" : "▶";
     if (!backingModeActive && scorePlaying && !el.audio.paused) el.audio.pause();
+    if(!scorePlaying&&!backingModeActive&&pendingPauseReturnTick!==null){
+      const target=Math.max(0,Number(pendingPauseReturnTick)||0);
+      pendingPauseReturnTick=null;
+      requestAnimationFrame(()=>{
+        try{api.tickPosition=target;}catch(error){}
+        scheduleLookAheadScroll(true);
+      });
+    }
   });
 
   api.playerPositionChanged.on((event) => {
@@ -3157,7 +3184,9 @@
 
   function backingCountInInfo(){
     const score=api&&api.score;
-    const bpm=Math.max(30,Math.min(300,Number(score&&score.tempo)||120));
+    const baseBpm=Math.max(30,Math.min(300,Number(score&&score.tempo)||120));
+    const speedFactor=Math.max(0.25,Math.min(1.5,(parseInt(el.speed&&el.speed.value,10)||100)/100));
+    const bpm=baseBpm*speedFactor;
     let beats=4;
     try{
       const bars=score&&Array.isArray(score.masterBars)?score.masterBars:[];
@@ -3192,55 +3221,110 @@
     }catch(error){}
   }
 
+  function cancelBackingCountIn(){
+    backingCountInToken++;
+    backingCountInRunning=false;
+    const countdown=document.getElementById("practiceCountdown");
+    if(countdown) countdown.classList.remove("show");
+  }
+
   async function runBackingCountIn(){
     if(!el.countIn||!el.countIn.classList.contains("active")) return true;
+    const token=++backingCountInToken;
+    backingCountInRunning=true;
     const info=backingCountInInfo();
     const beatMs=Math.max(100,Math.round(60000/info.bpm));
-    for(let beat=1;beat<=info.beats;beat++){
-      backingCountInClick(beat===1);
-      await new Promise(resolve=>setTimeout(resolve,beatMs));
-      if(!backingModeActive) return false;
+    const countdown=document.getElementById("practiceCountdown");
+    const countdownNumber=document.getElementById("practiceCountdownNumber");
+    if(countdown) countdown.classList.add("show");
+    try{
+      for(let beat=1;beat<=info.beats;beat++){
+        if(token!==backingCountInToken||!backingModeActive) return false;
+        if(countdownNumber) countdownNumber.textContent=String(beat);
+        backingCountInClick(beat===1);
+        await new Promise(resolve=>setTimeout(resolve,beatMs));
+      }
+      return token===backingCountInToken&&backingModeActive;
+    }finally{
+      if(token===backingCountInToken) backingCountInRunning=false;
+      if(countdown) countdown.classList.remove("show");
     }
-    return true;
   }
 
   el.play.onclick = async () => {
     if (!playerReady) return;
+
     if (backingModeActive) {
       const song = await getSong(selectedSongId);
       if (!song) return;
       try {
         await ensureBackingAudio(song);
-        if (el.audio.paused) {
-          let anchor=Math.max(0,Number(el.audio.currentTime)||0);
-          if(backingLoopEnabled&&backingLoopEndMs>backingLoopStartMs){
-            const start=backingLoopStartMs/1000,end=backingLoopEndMs/1000;
-            if(anchor<start||anchor>=end) anchor=start;
-          }
-          playAnchorAudioTime=anchor;
-          el.audio.currentTime=anchor;
-          syncCursorFromBacking();
-          const counted=await runBackingCountIn();
-          if(!counted) return;
-          await el.audio.play();
-        } else {
+
+        if(backingCountInRunning){
+          cancelBackingCountIn();
           el.audio.pause();
-          el.audio.currentTime = Math.max(0,playAnchorAudioTime||0);
+          el.audio.currentTime=Math.max(0,Number(playAnchorAudioTime)||0);
+          syncCursorFromBacking();
+          el.play.textContent="▶";
+          return;
+        }
+
+        if (!el.audio.paused) {
+          cancelBackingCountIn();
+          el.audio.pause();
+          el.audio.currentTime = Math.max(0,Number(playAnchorAudioTime)||0);
           syncCursorFromBacking();
           el.play.textContent = "▶";
+          return;
         }
+
+        const cursorTick=Math.max(0,Number(api.tickPosition)||0);
+        let anchor=backingSyncMap.length
+          ? Math.max(0,backingAudioTimeFromScoreTick(cursorTick)/1000)
+          : Math.max(0,Number(el.audio.currentTime)||0);
+
+        if(backingLoopEnabled&&backingLoopEndMs>backingLoopStartMs){
+          const start=backingLoopStartMs/1000,end=backingLoopEndMs/1000;
+          if(anchor<start||anchor>=end) anchor=start;
+        }
+
+        playAnchorAudioTime=anchor;
+        el.audio.currentTime=anchor;
+        syncCursorFromBacking();
+
+        const counted=await runBackingCountIn();
+        if(!counted) return;
+        if(!backingModeActive||!el.audio.paused) return;
+
+        el.audio.currentTime=anchor;
+        syncCursorFromBacking();
+        await el.audio.play();
       } catch (error) {
+        cancelBackingCountIn();
         setStatus("Could not play synced backing: " + error.message, "warn");
       }
       return;
     }
 
     if (!el.audio.paused) el.audio.pause();
-    if (scorePlaying) {
+    const playing=scorePlaying || (
+      api.playerState!==undefined &&
+      alphaTab&&alphaTab.synth&&alphaTab.synth.PlayerState &&
+      api.playerState===alphaTab.synth.PlayerState.Playing
+    );
+
+    if (playing) {
+      pendingPauseReturnTick=Math.max(0,Number(playAnchorTick)||0);
       try { api.pause(); } catch (error) {}
-      try { api.tickPosition = Math.max(0,Number(playAnchorTick)||0); } catch (error) {}
+      setTimeout(()=>{
+        if(pendingPauseReturnTick!==null){
+          const target=Math.max(0,Number(pendingPauseReturnTick)||0);
+          pendingPauseReturnTick=null;
+          try{api.tickPosition=target;}catch(error){}
+          scheduleLookAheadScroll(true);
+        }
+      },0);
       el.play.textContent = "▶";
-      scheduleLookAheadScroll(true);
       return;
     }
 
@@ -3251,23 +3335,34 @@
       if(anchor<start||anchor>=end) anchor=start;
     }
     playAnchorTick=anchor;
+    pendingPauseReturnTick=null;
     try { api.tickPosition=anchor; } catch(error){}
-    api.playPause();
+    if(typeof api.play==="function"){
+      const started=api.play();
+      if(started===false && typeof api.playPause==="function") api.playPause();
+    }else{
+      api.playPause();
+    }
   };
   el.stop.onclick = () => {
     if (!playerReady) return;
+    cancelBackingCountIn();
+    pendingPauseReturnTick=null;
     stopCustomDrumSources();
     if (backingModeActive) {
       el.audio.pause();
       el.audio.currentTime = backingLoopEnabled && backingLoopEndMs > backingLoopStartMs ? backingLoopStartMs / 1000 : 0;
+      playAnchorAudioTime=el.audio.currentTime;
       syncCursorFromBacking();
       el.play.textContent = "▶";
     } else {
       api.stop();
+      playAnchorTick=Math.max(0,Number(api.tickPosition)||0);
     }
   };
   el.countIn.onclick = () => {
     el.countIn.classList.toggle("active");
+    if(backingModeActive&&backingCountInRunning) cancelBackingCountIn();
     api.countInVolume = (!backingModeActive && el.countIn.classList.contains("active")) ? 1 : 0;
     window.dispatchEvent(new CustomEvent("dtmtp:practice-display-changed",{
       detail:{countIn:el.countIn.classList.contains("active")}
