@@ -1907,14 +1907,14 @@
     const hasLoopRange=!!(window.dtMusicTrainerProAlphaTab&&window.dtMusicTrainerProAlphaTab.playbackRange);
     if(loop){
       loop.disabled=active||!oldLoop||oldLoop.disabled;
-      loop.classList.toggle("active",practiceLoopSelectMode||!!(oldLoop&&oldLoop.classList.contains("active")));
+      loop.classList.toggle("active",!!(oldLoop&&oldLoop.classList.contains("active")));
       const label=loop.querySelector("span");
-      if(label) label.textContent=practiceLoopSelectMode?"Select":"Loop";
+      if(label) label.textContent=loop.classList.contains("active")?"Loop On":"Loop";
     }
     const clearLoop=$("p77ClearLoop");
     if(clearLoop) clearLoop.hidden=!hasLoopRange;
     const selectionHint=$("p77SelectionHint");
-    if(selectionHint) selectionHint.hidden=!practiceLoopSelectMode;
+    if(selectionHint) selectionHint.hidden=true;
 
     const sessionButton=$("p77Session");
     if(sessionButton){
@@ -1941,6 +1941,8 @@
     if(metro){
       metro.disabled=!oldMetro||oldMetro.disabled;
       metro.classList.toggle("active",!!(oldMetro&&oldMetro.classList.contains("active")));
+      const label=metro.querySelector("span");
+      if(label) label.textContent=metro.classList.contains("active")?"Metronome On":"Metronome";
     }
 
     const countIn=$("p77CountIn");
@@ -1948,7 +1950,7 @@
       const on=!!(practiceCountIn&&practiceCountIn.checked);
       countIn.disabled=active||!practiceCountIn;
       countIn.classList.toggle("active",on);
-      const label=countIn.querySelector("span"); if(label) label.textContent=on?"Count In":"Count Off";
+      const label=countIn.querySelector("span"); if(label) label.textContent=on?"Count In On":"Count In";
     }
     const hint=$("p77GuidedHint");
     if(hint){
@@ -1983,14 +1985,8 @@
     if(play) play.onclick=()=>practiceClick("playBtn");
     if(loop) loop.onclick=()=>{
       if(practiceSessionActive()) return;
-      const alpha=window.dtMusicTrainerProAlphaTab;
-      if(alpha&&alpha.playbackRange){
-        practiceClick("loopBtn");
-        setTimeout(syncPracticeChrome,40);
-        return;
-      }
-      practiceLoopSelectMode=!practiceLoopSelectMode;
-      syncPracticeChrome();
+      practiceClick("loopBtn");
+      setTimeout(syncPracticeChrome,40);
     };
     if(restart) restart.onclick=()=>{
       if(practiceClick("practiceRetryBtn")) return;
