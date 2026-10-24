@@ -3239,16 +3239,19 @@
   }
 
   function cancelBackingCountIn(){
+    const wasRunning=backingCountInRunning;
     backingCountInToken++;
     backingCountInRunning=false;
     const countdown=document.getElementById("practiceCountdown");
     if(countdown) countdown.classList.remove("show");
+    if(wasRunning&&el.play) el.play.textContent="▶";
   }
 
   async function runBackingCountIn(){
     if(!el.countIn||!el.countIn.classList.contains("active")) return true;
     const token=++backingCountInToken;
     backingCountInRunning=true;
+    if(el.play) el.play.textContent="Ⅱ";
     const info=backingCountInInfo();
     const beatMs=Math.max(100,Math.round(60000/info.bpm));
     const countdown=document.getElementById("practiceCountdown");
@@ -3318,6 +3321,7 @@
         await el.audio.play();
       } catch (error) {
         cancelBackingCountIn();
+        if(el.play) el.play.textContent="▶";
         setStatus("Could not play synced backing: " + error.message, "warn");
       }
       return;
