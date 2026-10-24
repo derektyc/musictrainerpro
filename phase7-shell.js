@@ -2577,6 +2577,26 @@
   });
 
   document.addEventListener("keydown",e=>{
+    if(currentRoute!=="practice") return;
+    const target=e.target;
+    const tag=String(target&&target.tagName||"").toLowerCase();
+    if(tag==="input"||tag==="textarea"||tag==="select"||(target&&target.isContentEditable)) return;
+
+    if(e.code==="Space"){
+      e.preventDefault();
+      const play=$("p77Play");
+      if(play&&!play.disabled) play.click();
+      return;
+    }
+
+    if(e.key==="s"||e.key==="S"){
+      e.preventDefault();
+      const stop=$("p77Stop");
+      if(stop&&!stop.disabled) stop.click();
+    }
+  });
+
+  document.addEventListener("keydown",e=>{
     if(e.key!=="Escape") return;
     const completion=$("p7Completion");
     if(completion){ hideCompletion(); return; }
