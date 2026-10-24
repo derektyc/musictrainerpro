@@ -97,6 +97,8 @@
   let backingCursorDriverActive = false;
   let backingPreRollFrozen = false;
   let backingTracksMuted = false;
+  let playAnchorTick = 0;
+  let playAnchorAudioTime = 0;
   let playedNoteHighlighting = false;
   let synthVolumeBeforeBacking = 1;
   let customDrumKit = null;
@@ -3160,15 +3162,42 @@
       if (!song) return;
       try {
         await ensureBackingAudio(song);
-        if (el.audio.paused) await el.audio.play();
-        else el.audio.pause();
+        if (el.audio.paused) {
+          playAnchorAudioTime = backingLoopEnabled && backingLoopEndMs > backingLoopStartMs
+            ? backingLoopStartMs / 1000
+            : Math.max(0,Number(el.audio.currentTime)||0);
+          if (backingLoopEnabled && backingLoopEndMs > backingLoopStartMs) {
+            el.audio.currentTime = playAnchorAudioTime;
+            syncCursorFromBacking();
+          }
+          await el.audio.play();
+        } else {
+          el.audio.pause();
+          el.audio.currentTime = Math.max(0,playAnchorAudioTime||0);
+          syncCursorFromBacking();
+          el.play.textContent = "▶";
+        }
       } catch (error) {
         setStatus("Could not play synced backing: " + error.message, "warn");
       }
       return;
     }
     if (!el.audio.paused) el.audio.pause();
-    api.playPause();
+    if (scorePlaying) {
+      try { api.pause(); } catch (error) {}
+      try { api.tickPosition = Math.max(0,Number(playAnchorTick)||0); } catch (error) {}
+      el.play.textContent = "▶";
+      scheduleLookAheadScroll(true);
+    } else {
+      playAnchorTick = api.playbackRange && api.isLooping
+        ? Math.max(0,Number(api.playbackRange.startTick)||0)
+        : Math.max(0,Number(api.tickPosition)||0);
+      if (api.playbackRange && api.isLooping) {
+        try { api.tickPosition = playAnchorTick; } catch (error) {}
+      }
+      if (typeof api.play === "function") api.play();
+      else api.playPause();
+    }
   };
   el.stop.onclick = () => {
     if (!playerReady) return;
