@@ -22,6 +22,11 @@
   let practiceToolsOpen = false;
   let practiceLoopSelectMode = false;
   let backingPositionBound = false;
+  let loopStartBeat = null;
+  let loopEndBeat = null;
+  let loopHandlesBound = false;
+  let loopHandleStart = null;
+  let loopHandleEnd = null;
 
   const routes = {
     teacher:[
@@ -187,6 +192,10 @@
                     <button id="p77SpeedUp" type="button" disabled aria-label="Increase speed">+</button>
                   </div>
                 </div>
+                <label id="p77BackingWrap" class="p77-backing-picker" hidden>
+                  <span>Backing</span>
+                  <select id="p77BackingSelect"><option value="__synth__">Synth</option></select>
+                </label>
               </div>
               <div id="p77SelectionHint" class="p77-selection-hint" hidden>Drag across the score to select the bars you want to loop.</div>
               <div id="p77GuidedHint" class="p77-guided-hint" hidden>Guided Practice controls the loop and speed automatically.</div>
@@ -1868,6 +1877,209 @@
     return false;
   }
 
+  function loopBeatTick(beat){
+    return beat?Math.max(0,Number(beat.absolutePlaybackStart)||0):0;
+  }
+
+  function allRenderedPracticeBeats(){
+    const api=window.dtMusicTrainerProAlphaTab;
+    if(!api||!api.score||!Array.isArray(api.tracks)||!api.tracks.length) return [];
+    const track=api.tracks[0]||api.score.tracks[0];
+    const beats=[];
+    try{
+      (track.staves||[]).slice(0,1).forEach(staff=>{
+        (staff.bars||[]).forEach(bar=>{
+          (bar.voices||[]).forEach(voice=>{
+            (voice.beats||[]).forEach(beat=>{if(beat&&!beat.isEmpty) beats.push(beat);});
+          });
+        });
+      });
+    }catch(error){}
+    const unique=[];
+    const seen=new Set();
+    beats.sort((a,b)=>loopBeatTick(a)-loopBeatTick(b)).forEach(beat=>{
+      const tick=loopBeatTick(beat);
+      if(!seen.has(tick)){seen.add(tick);unique.push(beat);}
+    });
+    return unique;
+  }
+
+  function defaultLoopBeats(){
+    const api=window.dtMusicTrainerProAlphaTab;
+    const beats=allRenderedPracticeBeats();
+    if(!api||!beats.length) return null;
+    const tick=Math.max(0,Number(api.tickPosition)||0);
+    let startIndex=0;
+    for(let i=0;i<beats.length;i++){
+      if(loopBeatTick(beats[i])<=tick) startIndex=i;
+      else break;
+    }
+    const endIndex=Math.min(beats.length-1,startIndex+Math.max(4,Math.min(12,Math.round(beats.length/8))));
+    return {start:beats[startIndex],end:beats[Math.max(startIndex+1,endIndex)]||beats[startIndex]};
+  }
+
+  function ensureLoopHandles(){
+    const viewport=$("scoreViewport");
+    if(!viewport) return null;
+    if(!loopHandleStart){
+      loopHandleStart=document.createElement("div");
+      loopHandleStart.id="p77LoopHandleStart";
+      loopHandleStart.className="p77-loop-handle p77-loop-start";
+      loopHandleStart.innerHTML='<b>A</b><i></i>';
+      loopHandleStart.hidden=true;
+      viewport.appendChild(loopHandleStart);
+    }
+    if(!loopHandleEnd){
+      loopHandleEnd=document.createElement("div");
+      loopHandleEnd.id="p77LoopHandleEnd";
+      loopHandleEnd.className="p77-loop-handle p77-loop-end";
+      loopHandleEnd.innerHTML='<b>B</b><i></i>';
+      loopHandleEnd.hidden=true;
+      viewport.appendChild(loopHandleEnd);
+    }
+    return {start:loopHandleStart,end:loopHandleEnd};
+  }
+
+  function loopBoundsRect(bounds){
+    if(!bounds) return null;
+    const r=bounds.realBounds||bounds.visualBounds||bounds;
+    const x=Number(r.x),y=Number(r.y),w=Number(r.w!==undefined?r.w:r.width),h=Number(r.h!==undefined?r.h:r.height);
+    if(!Number.isFinite(x)||!Number.isFinite(y)) return null;
+    return {x,y,w:Number.isFinite(w)?w:0,h:Number.isFinite(h)?h:60};
+  }
+
+  function positionLoopHandles(event){
+    const handles=ensureLoopHandles();
+    const alpha=$("alphaTab");
+    const loop=$("p77Loop");
+    if(!handles||!alpha||!loop||!loop.classList.contains("active")){
+      if(handles){handles.start.hidden=true;handles.end.hidden=true;}
+      return;
+    }
+    const startRect=loopBoundsRect(event&&event.startBeatBounds);
+    const endRect=loopBoundsRect(event&&event.endBeatBounds);
+    const place=(node,rect,isEnd)=>{
+      if(!rect){node.hidden=true;return;}
+      node.hidden=false;
+      const x=rect.x+(isEnd?Math.max(1,rect.w):0);
+      node.style.left=Math.round((alpha.offsetLeft||0)+x)+"px";
+      node.style.top=Math.round((alpha.offsetTop||0)+rect.y-16)+"px";
+      node.style.height=Math.round(Math.max(60,rect.h+32))+"px";
+    };
+    place(handles.start,startRect,false);
+    place(handles.end,endRect,true);
+  }
+
+  function applyLoopBeats(startBeat,endBeat){
+    const api=window.dtMusicTrainerProAlphaTab;
+    if(!api||!startBeat||!endBeat) return false;
+    let a=startBeat,b=endBeat;
+    if(loopBeatTick(a)>loopBeatTick(b)){const t=a;a=b;b=t;}
+    if(a===b){
+      const beats=allRenderedPracticeBeats();
+      const at=beats.indexOf(a);
+      if(at>=0&&at<beats.length-1) b=beats[at+1];
+    }
+    loopStartBeat=a; loopEndBeat=b;
+    const startTick=loopBeatTick(a);
+    const endTick=Math.max(startTick+1,loopBeatTick(b)+Math.max(1,Number(b.playbackDuration)||1));
+    try{
+      api.playbackRange={startTick,endTick};
+      api.isLooping=true;
+      const oldLoop=$("loopBtn");
+      if(oldLoop) oldLoop.classList.add("active");
+      api.highlightPlaybackRange(a,b);
+      return true;
+    }catch(error){
+      console.warn("Could not set draggable loop range",error);
+      return false;
+    }
+  }
+
+  function setLoopHandlesVisible(visible){
+    const handles=ensureLoopHandles();
+    if(!handles) return;
+    handles.start.hidden=!visible;
+    handles.end.hidden=!visible;
+    if(!visible){
+      try{window.dtMusicTrainerProAlphaTab&&window.dtMusicTrainerProAlphaTab.clearPlaybackRangeHighlight();}catch(error){}
+    }else if(loopStartBeat&&loopEndBeat){
+      try{window.dtMusicTrainerProAlphaTab.highlightPlaybackRange(loopStartBeat,loopEndBeat);}catch(error){}
+    }
+  }
+
+  function bindLoopHandleEvents(){
+    if(loopHandlesBound) return;
+    const handles=ensureLoopHandles();
+    if(!handles) return;
+    loopHandlesBound=true;
+    const bind=(node,which)=>{
+      node.addEventListener("pointerdown",event=>{
+        if(event.button!==undefined&&event.button!==0) return;
+        event.preventDefault();
+        node.setPointerCapture&&node.setPointerCapture(event.pointerId);
+        const move=e=>{
+          const api=window.dtMusicTrainerProAlphaTab;
+          const alpha=$("alphaTab");
+          if(!api||!api.boundsLookup||!alpha) return;
+          const rect=alpha.getBoundingClientRect();
+          const x=e.clientX-rect.left;
+          const y=e.clientY-rect.top;
+          let beat=null;
+          try{beat=api.boundsLookup.getBeatAtPos(x,y);}catch(error){}
+          if(!beat) return;
+          if(which==="start"){
+            if(loopEndBeat&&loopBeatTick(beat)>=loopBeatTick(loopEndBeat)) return;
+            applyLoopBeats(beat,loopEndBeat||beat);
+          }else{
+            if(loopStartBeat&&loopBeatTick(beat)<=loopBeatTick(loopStartBeat)) return;
+            applyLoopBeats(loopStartBeat||beat,beat);
+          }
+        };
+        const up=e=>{
+          try{node.releasePointerCapture&&node.releasePointerCapture(e.pointerId);}catch(error){}
+          window.removeEventListener("pointermove",move);
+          window.removeEventListener("pointerup",up);
+        };
+        window.addEventListener("pointermove",move);
+        window.addEventListener("pointerup",up);
+      });
+    };
+    bind(handles.start,"start");
+    bind(handles.end,"end");
+
+    const api=window.dtMusicTrainerProAlphaTab;
+    if(api&&api.playbackRangeHighlightChanged&&typeof api.playbackRangeHighlightChanged.on==="function"){
+      api.playbackRangeHighlightChanged.on(event=>positionLoopHandles(event));
+    }
+  }
+
+  function syncBackingPicker(){
+    const wrap=$("p77BackingWrap"), select=$("p77BackingSelect"), oldSelect=$("audioVersionSelect");
+    if(!wrap||!select) return;
+    const options=oldSelect?Array.from(oldSelect.options||[]).filter(o=>o.value):[];
+    if(!options.length){
+      wrap.hidden=true;
+      select.innerHTML='<option value="__synth__">Synth</option>';
+      return;
+    }
+    wrap.hidden=false;
+    const signature=options.map(o=>o.value+"|"+o.textContent).join("\n");
+    if(select.dataset.signature!==signature){
+      select.innerHTML='<option value="__synth__">Synth</option>';
+      options.forEach(o=>{
+        const option=document.createElement("option");
+        option.value=o.value;
+        option.textContent=o.textContent||"Backing Track";
+        select.appendChild(option);
+      });
+      select.dataset.signature=signature;
+    }
+    const backing=$("backingModeBtn");
+    const backingActive=!!(backing&&backing.classList.contains("active-source"));
+    select.value=backingActive&&oldSelect&&oldSelect.value?oldSelect.value:"__synth__";
+  }
+
   function syncPracticeChrome(){
     if(!shellBuilt) return;
     const title=$("p77SongTitle"), meta=$("p77SongMeta");
@@ -1939,6 +2151,8 @@
       if(label) label.textContent=metro.classList.contains("active")?"Metronome On":"Metronome";
     }
 
+    syncBackingPicker();
+
     const countIn=$("p77CountIn");
     if(countIn){
       const oldCountIn=$("countInBtn");
@@ -1975,12 +2189,28 @@
 
   function bindPracticeChrome(){
     const play=$("p77Play"), stopControl=$("p77Stop"), loop=$("p77Loop"), metro=$("p77Metro"), countIn=$("p77CountIn"), clearLoop=$("p77ClearLoop");
-    const speedDisplay=$("p77SpeedDisplay"), speedDown=$("p77SpeedDown"), speedUp=$("p77SpeedUp");
+    const speedDisplay=$("p77SpeedDisplay"), speedDown=$("p77SpeedDown"), speedUp=$("p77SpeedUp"), backingSelect=$("p77BackingSelect");
 
     if(play) play.onclick=()=>practiceClick("playBtn");
     if(loop) loop.onclick=()=>{
       if(practiceSessionActive()) return;
-      practiceClick("loopBtn");
+      const api=window.dtMusicTrainerProAlphaTab;
+      const oldLoop=$("loopBtn");
+      if(!api||!oldLoop||oldLoop.disabled) return;
+      const wasOn=oldLoop.classList.contains("active");
+      if(wasOn){
+        oldLoop.click();
+        setLoopHandlesVisible(false);
+      }else{
+        if(!loopStartBeat||!loopEndBeat){
+          const defaults=defaultLoopBeats();
+          if(defaults) applyLoopBeats(defaults.start,defaults.end);
+        }else{
+          applyLoopBeats(loopStartBeat,loopEndBeat);
+        }
+        if(!oldLoop.classList.contains("active")) oldLoop.click();
+        setLoopHandlesVisible(true);
+      }
       setTimeout(syncPracticeChrome,40);
     };
     if(stopControl) stopControl.onclick=()=>{
@@ -2023,6 +2253,30 @@
         else if(e.key==="ArrowDown"||e.key==="ArrowLeft"){e.preventDefault();stepPracticeSpeed(-1);}
       });
     }
+
+    if(backingSelect) backingSelect.onchange=async()=>{
+      if(practiceSessionActive()) return;
+      const value=backingSelect.value;
+      if(value==="__synth__"){
+        practiceClick("synthModeBtn");
+        setTimeout(syncPracticeChrome,100);
+        return;
+      }
+      try{
+        const lib=window.DTMusicTrainerLibrary;
+        const songId=lib&&typeof lib.getSelectedSongId==="function"?lib.getSelectedSongId():"";
+        if(lib&&songId&&typeof lib.selectAudioVersion==="function") await lib.selectAudioVersion(songId,value);
+        const old=$("audioVersionSelect");
+        if(old){old.value=value;old.dispatchEvent(new Event("change",{bubbles:true}));}
+        const backing=$("backingModeBtn");
+        if(backing&&!backing.disabled&&!backing.classList.contains("active-source")) backing.click();
+      }catch(error){
+        console.warn("Could not switch backing track",error);
+      }
+      setTimeout(syncPracticeChrome,180);
+    };
+
+    bindLoopHandleEvents();
 
     if(practiceChromeObserver){try{practiceChromeObserver.disconnect();}catch(error){}}
     practiceChromeObserver=new MutationObserver(()=>syncPracticeChrome());
