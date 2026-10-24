@@ -173,7 +173,7 @@
               <div id="p77EngineHost" class="p77-engine-host"></div>
               <div id="p77ControlDock" class="p77-control-dock p77-simple-dock">
                 <div class="p77-transport p77-simple-transport">
-                  <button id="p77Restart" class="p77-control" type="button" disabled title="Restart">↺<span>Restart</span></button>
+                  <button id="p77Stop" class="p77-control" type="button" disabled title="Stop">■<span>Stop</span></button>
                   <button id="p77Play" class="p77-control p77-play p77-main-play" type="button" disabled title="Play / Pause">▶<span>Play</span></button>
                   <button id="p77Loop" class="p77-control" type="button" disabled title="Loop">↻<span>Loop</span></button>
                   <button id="p77Metro" class="p77-control" type="button" disabled title="Metronome">♩<span>Metronome</span></button>
@@ -187,7 +187,6 @@
                     <button id="p77SpeedUp" type="button" disabled aria-label="Increase speed">+</button>
                   </div>
                 </div>
-                <button id="p77Session" class="p77-session p77-session-large" type="button" disabled>Start Practice</button>
               </div>
               <div id="p77SelectionHint" class="p77-selection-hint" hidden>Drag across the score to select the bars you want to loop.</div>
               <div id="p77GuidedHint" class="p77-guided-hint" hidden>Guided Practice controls the loop and speed automatically.</div>
@@ -1877,8 +1876,7 @@
     const active=practiceSessionActive();
     const assignment=session&&session.role==="student"?activeAssignment():null;
     const viewerTitle=$("viewerTitle"), viewerMeta=$("viewerMeta");
-    const oldPlay=$("playBtn"), oldLoop=$("loopBtn"), oldSpeed=$("speed"), oldZoom=$("zoom"), oldMetro=$("metroBtn"), practiceCountIn=$("practiceCountIn");
-    const start=$("practiceStartBtn"), stop=$("practiceStopBtn"), retry=$("practiceRetryBtn");
+    const oldPlay=$("playBtn"), oldLoop=$("loopBtn"), oldSpeed=$("speed"), oldZoom=$("zoom"), oldMetro=$("metroBtn");
     const synth=$("synthModeBtn"), backing=$("backingModeBtn"), pdf=$("openPdfBtn");
 
     title.textContent=assignment&&assignment.songTitle
@@ -1900,8 +1898,11 @@
       const label=play.querySelector("span"); if(label) label.textContent=isPause?"Pause":"Play";
     }
 
-    const restart=$("p77Restart");
-    if(restart) restart.disabled=!(retry&&!retry.disabled)&&(!oldPlay||oldPlay.disabled);
+    const stopControl=$("p77Stop");
+    if(stopControl){
+      const oldStop=$("stopBtn");
+      stopControl.disabled=!oldStop||oldStop.disabled;
+    }
 
     const loop=$("p77Loop");
     const hasLoopRange=!!(window.dtMusicTrainerProAlphaTab&&window.dtMusicTrainerProAlphaTab.playbackRange);
@@ -1915,13 +1916,6 @@
     if(clearLoop) clearLoop.hidden=!hasLoopRange;
     const selectionHint=$("p77SelectionHint");
     if(selectionHint) selectionHint.hidden=true;
-
-    const sessionButton=$("p77Session");
-    if(sessionButton){
-      sessionButton.textContent=active?"Stop Practice":"Start Practice";
-      sessionButton.classList.toggle("running",active);
-      sessionButton.disabled=active?!(stop&&!stop.disabled):!(start&&!start.disabled);
-    }
 
     const speedDisplay=$("p77SpeedDisplay"), speedDown=$("p77SpeedDown"), speedUp=$("p77SpeedUp");
     const speedValue=($("speedValue")&&$("speedValue").textContent)||((oldSpeed&&oldSpeed.value)||100)+"%";
@@ -1948,11 +1942,8 @@
     const countIn=$("p77CountIn");
     if(countIn){
       const oldCountIn=$("countInBtn");
-      const on=!!(
-        (oldCountIn&&oldCountIn.classList.contains("active")) ||
-        (practiceCountIn&&practiceCountIn.checked)
-      );
-      countIn.disabled=active||(!practiceCountIn&&!oldCountIn);
+      const on=!!(oldCountIn&&oldCountIn.classList.contains("active"));
+      countIn.disabled=!oldCountIn||oldCountIn.disabled;
       countIn.classList.toggle("active",on);
       const label=countIn.querySelector("span"); if(label) label.textContent=on?"Count In On":"Count In";
     }
@@ -1983,7 +1974,7 @@
   }
 
   function bindPracticeChrome(){
-    const play=$("p77Play"), restart=$("p77Restart"), loop=$("p77Loop"), sessionButton=$("p77Session"), metro=$("p77Metro"), countIn=$("p77CountIn"), clearLoop=$("p77ClearLoop");
+    const play=$("p77Play"), stopControl=$("p77Stop"), loop=$("p77Loop"), metro=$("p77Metro"), countIn=$("p77CountIn"), clearLoop=$("p77ClearLoop");
     const speedDisplay=$("p77SpeedDisplay"), speedDown=$("p77SpeedDown"), speedUp=$("p77SpeedUp");
 
     if(play) play.onclick=()=>practiceClick("playBtn");
@@ -1992,48 +1983,21 @@
       practiceClick("loopBtn");
       setTimeout(syncPracticeChrome,40);
     };
-    if(restart) restart.onclick=()=>{
-      if(practiceClick("practiceRetryBtn")) return;
-      const stop=$("stopBtn"), oldPlay=$("playBtn");
-      if(stop&&!stop.disabled) stop.click();
-      if(oldPlay&&!oldPlay.disabled) setTimeout(()=>oldPlay.click(),40);
+    if(stopControl) stopControl.onclick=()=>{
+      practiceClick("stopBtn");
+      setTimeout(syncPracticeChrome,30);
     };
     if(metro) metro.onclick=()=>{practiceClick("metroBtn");setTimeout(syncPracticeChrome,30);};
     if(countIn) countIn.onclick=()=>{
-      if(practiceSessionActive()) return;
-      const practiceToggle=$("practiceCountIn");
       const playerToggle=$("countInBtn");
-      const currentlyOn=!!(
-        (playerToggle&&playerToggle.classList.contains("active")) ||
-        (practiceToggle&&practiceToggle.checked)
-      );
-      const next=!currentlyOn;
-
-      if(practiceToggle){
-        practiceToggle.checked=next;
-        practiceToggle.dispatchEvent(new Event("change",{bubbles:true}));
-      }
-
-      if(playerToggle&&!playerToggle.disabled){
-        const playerOn=playerToggle.classList.contains("active");
-        if(playerOn!==next) playerToggle.click();
-      }else{
-        try{
-          const alpha=window.dtMusicTrainerProAlphaTab;
-          if(alpha) alpha.countInVolume=next?1:0;
-        }catch(error){}
-      }
-
+      if(!playerToggle||playerToggle.disabled) return;
+      playerToggle.click();
       setTimeout(syncPracticeChrome,30);
     };
     if(clearLoop) clearLoop.onclick=()=>{
       practiceLoopSelectMode=false;
       practiceClick("clearLoopBtn");
       setTimeout(syncPracticeChrome,30);
-    };
-    if(sessionButton) sessionButton.onclick=()=>{
-      if(practiceSessionActive()) practiceClick("practiceStopBtn");
-      else practiceClick("practiceStartBtn");
     };
     const stepPracticeSpeed=(delta)=>{
       if(practiceSessionActive()) return;
