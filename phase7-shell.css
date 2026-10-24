@@ -1829,3 +1829,12 @@ body.p7-ready .auth-account-btn{font-size:12px!important}
   #p7PagePractice .p77-simple-transport .p77-control{min-width:60px;flex:1 1 28%}
   #p7PagePractice .p77-simple-transport .p77-main-play{flex-basis:38%}
 }
+
+
+/* 2026-10-24 Practice layout after removing Start Practice */
+#p7PagePractice .p77-simple-dock{
+  grid-template-columns:minmax(0,1fr) auto;
+}
+@media(max-width:620px){
+  #p7PagePractice .p77-simple-dock{grid-template-columns:1fr}
+}
