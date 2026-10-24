@@ -193,7 +193,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
 .sync-warn{color:#ffd0a4}
 
 /* alphaTab playback cursor styling */
-.at-cursor-bar{background:rgba(242,182,106,.22);border-radius:3px;pointer-events:none}
+.at-cursor-bar{background:transparent!important;border-radius:0;pointer-events:none}
 .at-cursor-beat{
   background:#d97918;width:3px;border-radius:3px;pointer-events:none;
   box-shadow:0 0 0 1px rgba(255,255,255,.25)
