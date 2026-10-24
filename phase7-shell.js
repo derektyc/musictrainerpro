@@ -2123,6 +2123,12 @@
       loop.classList.toggle("active",!!(oldLoop&&oldLoop.classList.contains("active")));
       const label=loop.querySelector("span");
       if(label) label.textContent=loop.classList.contains("active")?"Loop On":"Loop";
+      const handles=ensureLoopHandles();
+      if(!loop.classList.contains("active")){
+        if(handles){handles.start.hidden=true;handles.end.hidden=true;}
+      }else if(loopStartBeat&&loopEndBeat&&handles&&(handles.start.hidden||handles.end.hidden)){
+        try{window.dtMusicTrainerProAlphaTab.highlightPlaybackRange(loopStartBeat,loopEndBeat);}catch(error){}
+      }
     }
     const clearLoop=$("p77ClearLoop");
     if(clearLoop) clearLoop.hidden=!hasLoopRange;
@@ -2267,7 +2273,7 @@
         const songId=lib&&typeof lib.getSelectedSongId==="function"?lib.getSelectedSongId():"";
         if(lib&&songId&&typeof lib.selectAudioVersion==="function") await lib.selectAudioVersion(songId,value);
         const old=$("audioVersionSelect");
-        if(old){old.value=value;old.dispatchEvent(new Event("change",{bubbles:true}));}
+        if(old) old.value=value;
         const backing=$("backingModeBtn");
         if(backing&&!backing.disabled&&!backing.classList.contains("active-source")) backing.click();
       }catch(error){
