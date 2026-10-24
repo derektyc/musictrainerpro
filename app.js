@@ -1263,11 +1263,23 @@
     song.syncPoints=normalizeSyncPoints(version.syncPoints);
     await putSong(song);
     await refreshCache();
-    const refreshed=await getSong(songId);
+    let refreshed=await getSong(songId);
     if(backingModeActive&&refreshed){
+      cancelBackingCountIn();
       await ensureBackingAudio(refreshed);
-      applySongSyncPoints(refreshed);
-      syncCursorFromBacking();
+      if(normalizeSyncPoints(refreshed.syncPoints).length<2){
+        setStatus("New backing version needs sync · analysing…");
+        await autoSyncWholeSong();
+        refreshed=await getSong(songId);
+      }
+      if(refreshed){
+        applySongSyncPoints(refreshed);
+        if(api.playbackRange&&el.loop.classList.contains("active")){
+          backingLoopEnabled=true;
+          updateBackingLoopTimesFromTicks(api.playbackRange.startTick,api.playbackRange.endTick);
+        }
+        syncCursorFromBacking();
+      }
     }
     return refreshed;
   }
@@ -1639,6 +1651,7 @@
   }
 
   function stopBackingAudio() {
+    cancelBackingCountIn();
     stopBackingSyncTimer();
     el.audio.pause();
     el.audio.removeAttribute("src");
