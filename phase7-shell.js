@@ -2577,7 +2577,7 @@
   });
 
   document.addEventListener("keydown",e=>{
-    if(currentRoute!=="practice") return;
+    if(currentRoute!=="practice"||e.repeat) return;
     const target=e.target;
     const tag=String(target&&target.tagName||"").toLowerCase();
     if(tag==="input"||tag==="textarea"||tag==="select"||(target&&target.isContentEditable)) return;
