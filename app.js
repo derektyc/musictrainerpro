@@ -2531,8 +2531,12 @@
   }
 
   function resetTransportState() {
+    cancelBackingCountIn();
     resetLookAheadScroll();
     playerReady = false;
+    playAnchorTick = 0;
+    playAnchorAudioTime = 0;
+    pendingPauseReturnTick = null;
     [el.stop, el.play, el.countIn, el.metro, el.loop, el.speed, el.applyLoop, el.clearLoop]
       .forEach((node) => node.disabled = true);
     el.play.textContent = "▶";
