@@ -85,6 +85,7 @@
   let currentFilename = "";
   let playerReady = false;
   let scorePlaying = false;
+  let synthPlayIntent = false;
   let backingUrl = "";
   let loadedAudioSongId = "";
   let loadedAudioVersionId = "";
@@ -2534,6 +2535,7 @@
     cancelBackingCountIn();
     resetLookAheadScroll();
     playerReady = false;
+    synthPlayIntent = false;
     playAnchorTick = 0;
     playAnchorAudioTime = 0;
     pendingPauseReturnTick = null;
@@ -2936,6 +2938,7 @@
 
   api.playerStateChanged.on((event) => {
     scorePlaying = event.state === alphaTab.synth.PlayerState.Playing;
+    synthPlayIntent = scorePlaying;
     if (!backingModeActive) el.play.textContent = scorePlaying ? "Ⅱ" : "▶";
     if (!backingModeActive && scorePlaying && !el.audio.paused) el.audio.pause();
     if(!scorePlaying&&!backingModeActive&&pendingPauseReturnTick!==null){
@@ -3328,13 +3331,14 @@
     }
 
     if (!el.audio.paused) el.audio.pause();
-    const playing=scorePlaying || (
+    const playing=synthPlayIntent || scorePlaying || (
       api.playerState!==undefined &&
       alphaTab&&alphaTab.synth&&alphaTab.synth.PlayerState &&
       api.playerState===alphaTab.synth.PlayerState.Playing
     );
 
     if (playing) {
+      synthPlayIntent=false;
       pendingPauseReturnTick=Math.max(0,Number(playAnchorTick)||0);
       try { api.pause(); } catch (error) {}
       setTimeout(()=>{
@@ -3360,14 +3364,20 @@
     try { api.tickPosition=anchor; } catch(error){}
     if(typeof api.play==="function"){
       const started=api.play();
-      if(started===false && typeof api.playPause==="function") api.playPause();
+      synthPlayIntent=started!==false;
+      if(started===false && typeof api.playPause==="function"){
+        api.playPause();
+        synthPlayIntent=true;
+      }
     }else{
       api.playPause();
+      synthPlayIntent=true;
     }
   };
   el.stop.onclick = () => {
     if (!playerReady) return;
     cancelBackingCountIn();
+    synthPlayIntent=false;
     pendingPauseReturnTick=null;
     stopCustomDrumSources();
     if (backingModeActive) {
