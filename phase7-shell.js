@@ -1951,9 +1951,11 @@
   function positionLoopHandles(){
     const handles=ensureLoopHandles();
     const alpha=$("alphaTab");
+    const viewport=$("scoreViewport");
     const loop=$("p77Loop");
     const api=window.dtMusicTrainerProAlphaTab;
-    if(!handles||!alpha||!loop||!api||!api.boundsLookup||!loop.classList.contains("active")){
+    const surface=alpha&&alpha.querySelector(".at-surface");
+    if(!handles||!alpha||!viewport||!surface||!loop||!api||!api.boundsLookup||!loop.classList.contains("active")){
       if(handles){handles.start.hidden=true;handles.end.hidden=true;}
       return;
     }
@@ -1964,13 +1966,19 @@
     }catch(error){}
     const startRect=loopBoundsRect(startBounds);
     const endRect=loopBoundsRect(endBounds);
+    const surfaceRect=surface.getBoundingClientRect();
+    const viewportRect=viewport.getBoundingClientRect();
+    const scaleX=surface.offsetWidth?surfaceRect.width/surface.offsetWidth:1;
+    const scaleY=surface.offsetHeight?surfaceRect.height/surface.offsetHeight:1;
     const place=(node,rect,isEnd)=>{
       if(!rect){node.hidden=true;return;}
       node.hidden=false;
-      const x=rect.x+(isEnd?Math.max(1,rect.w):0);
-      node.style.left=Math.round((alpha.offsetLeft||0)+x)+"px";
-      node.style.top=Math.round((alpha.offsetTop||0)+rect.y-16)+"px";
-      node.style.height=Math.round(Math.max(60,rect.h+32))+"px";
+      const localX=rect.x+(isEnd?Math.max(1,rect.w):0);
+      const screenX=surfaceRect.left+localX*scaleX;
+      const screenY=surfaceRect.top+rect.y*scaleY;
+      node.style.left=Math.round(screenX-viewportRect.left+viewport.scrollLeft)+"px";
+      node.style.top=Math.round(screenY-viewportRect.top+viewport.scrollTop-16)+"px";
+      node.style.height=Math.round(Math.max(60,rect.h*scaleY+32))+"px";
     };
     place(handles.start,startRect,false);
     place(handles.end,endRect,true);
@@ -2028,10 +2036,12 @@
           e.preventDefault();
           const api=window.dtMusicTrainerProAlphaTab;
           const alpha=$("alphaTab");
-          if(!api||!api.boundsLookup||!alpha) return;
-          const rect=alpha.getBoundingClientRect();
-          const x=e.clientX-rect.left;
-          const y=e.clientY-rect.top;
+          const surface=alpha&&alpha.querySelector(".at-surface");
+          if(!api||!api.boundsLookup||!alpha||!surface) return;
+          const rect=surface.getBoundingClientRect();
+          if(!rect.width||!rect.height) return;
+          const x=(e.clientX-rect.left)*(surface.offsetWidth/rect.width);
+          const y=(e.clientY-rect.top)*(surface.offsetHeight/rect.height);
           let beat=null;
           try{beat=api.boundsLookup.getBeatAtPos(x,y);}catch(error){}
           if(!beat) return;
