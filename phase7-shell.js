@@ -246,13 +246,6 @@
 
     $("p7PracticeAssignments").onclick=()=>session&&session.role==="student"?navigate("assignments"):navigate("assignments");
     $("p77PracticeLibrary").onclick=()=>navigate("library");
-    $("p77ToolsToggle").onclick=()=>{
-      if(!session||session.role!=="teacher")return;
-      practiceToolsOpen=!practiceToolsOpen;
-      const page=$("p7PagePractice");
-      if(page) page.classList.toggle("p77-tools-open",practiceToolsOpen);
-      syncPracticeChrome();
-    };
     bindPracticeChrome();
     renderStaticPages();
     applySession(authSession());
