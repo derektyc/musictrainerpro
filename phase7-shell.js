@@ -1948,16 +1948,22 @@
     return {x,y,w:Number.isFinite(w)?w:0,h:Number.isFinite(h)?h:60};
   }
 
-  function positionLoopHandles(event){
+  function positionLoopHandles(){
     const handles=ensureLoopHandles();
     const alpha=$("alphaTab");
     const loop=$("p77Loop");
-    if(!handles||!alpha||!loop||!loop.classList.contains("active")){
+    const api=window.dtMusicTrainerProAlphaTab;
+    if(!handles||!alpha||!loop||!api||!api.boundsLookup||!loop.classList.contains("active")){
       if(handles){handles.start.hidden=true;handles.end.hidden=true;}
       return;
     }
-    const startRect=loopBoundsRect(event&&event.startBeatBounds);
-    const endRect=loopBoundsRect(event&&event.endBeatBounds);
+    let startBounds=null,endBounds=null;
+    try{
+      startBounds=loopStartBeat?api.boundsLookup.findBeat(loopStartBeat):null;
+      endBounds=loopEndBeat?api.boundsLookup.findBeat(loopEndBeat):null;
+    }catch(error){}
+    const startRect=loopBoundsRect(startBounds);
+    const endRect=loopBoundsRect(endBounds);
     const place=(node,rect,isEnd)=>{
       if(!rect){node.hidden=true;return;}
       node.hidden=false;
@@ -1988,7 +1994,8 @@
       api.isLooping=true;
       const oldLoop=$("loopBtn");
       if(oldLoop) oldLoop.classList.add("active");
-      api.highlightPlaybackRange(a,b);
+      try{api.clearPlaybackRangeHighlight();}catch(error){}
+      requestAnimationFrame(positionLoopHandles);
       return true;
     }catch(error){
       console.warn("Could not set draggable loop range",error);
@@ -2001,11 +2008,8 @@
     if(!handles) return;
     handles.start.hidden=!visible;
     handles.end.hidden=!visible;
-    if(!visible){
-      try{window.dtMusicTrainerProAlphaTab&&window.dtMusicTrainerProAlphaTab.clearPlaybackRangeHighlight();}catch(error){}
-    }else if(loopStartBeat&&loopEndBeat){
-      try{window.dtMusicTrainerProAlphaTab.highlightPlaybackRange(loopStartBeat,loopEndBeat);}catch(error){}
-    }
+    try{window.dtMusicTrainerProAlphaTab&&window.dtMusicTrainerProAlphaTab.clearPlaybackRangeHighlight();}catch(error){}
+    if(visible&&loopStartBeat&&loopEndBeat) requestAnimationFrame(positionLoopHandles);
   }
 
   function bindLoopHandleEvents(){
@@ -2017,8 +2021,11 @@
       node.addEventListener("pointerdown",event=>{
         if(event.button!==undefined&&event.button!==0) return;
         event.preventDefault();
+        document.body.classList.add("p77-loop-dragging");
+        try{window.getSelection&&window.getSelection().removeAllRanges();}catch(error){}
         node.setPointerCapture&&node.setPointerCapture(event.pointerId);
         const move=e=>{
+          e.preventDefault();
           const api=window.dtMusicTrainerProAlphaTab;
           const alpha=$("alphaTab");
           if(!api||!api.boundsLookup||!alpha) return;
@@ -2037,6 +2044,9 @@
           }
         };
         const up=e=>{
+          e.preventDefault();
+          document.body.classList.remove("p77-loop-dragging");
+          try{window.getSelection&&window.getSelection().removeAllRanges();}catch(error){}
           try{node.releasePointerCapture&&node.releasePointerCapture(e.pointerId);}catch(error){}
           window.removeEventListener("pointermove",move);
           window.removeEventListener("pointerup",up);
@@ -2049,8 +2059,8 @@
     bind(handles.end,"end");
 
     const api=window.dtMusicTrainerProAlphaTab;
-    if(api&&api.playbackRangeHighlightChanged&&typeof api.playbackRangeHighlightChanged.on==="function"){
-      api.playbackRangeHighlightChanged.on(event=>positionLoopHandles(event));
+    if(api&&api.renderFinished&&typeof api.renderFinished.on==="function"){
+      api.renderFinished.on(()=>requestAnimationFrame(positionLoopHandles));
     }
   }
 
@@ -2127,7 +2137,7 @@
       if(!loop.classList.contains("active")){
         if(handles){handles.start.hidden=true;handles.end.hidden=true;}
       }else if(loopStartBeat&&loopEndBeat&&handles&&(handles.start.hidden||handles.end.hidden)){
-        try{window.dtMusicTrainerProAlphaTab.highlightPlaybackRange(loopStartBeat,loopEndBeat);}catch(error){}
+        requestAnimationFrame(positionLoopHandles);
       }
     }
     const clearLoop=$("p77ClearLoop");
